@@ -1,0 +1,89 @@
+spring:
+  profiles:
+    active: local
+  application:
+    name: interview-assistant
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+  datasource:
+    # 文件库：数据持久化到 ./data/interviewdb，重启不丢失（可改为绝对路径）
+    url: jdbc:h2:file:./data/interviewdb;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  h2:
+    console:
+      enabled: true
+  jpa:
+    hibernate:
+      # update: 保留表和数据；首次启动建表，后续只做 schema 变更
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+
+# 智谱 GLM 配置：正式环境请通过环境变量 ZHIPU_API_KEY 或 application-local.yml 覆盖（本文件不要写死真实密钥）
+zhipu:
+  apiKey: "${ZHIPU_API_KEY:}"
+  # 主模型（对话、复盘等）: glm-4-flash, glm-4, glm-4.6v, glm-4.6v-flash 等
+  model: glm-4.6v
+  # 深挖问题生成专用：更快模型提速
+  questionModel: glm-4-flash
+  # 面试对话/答疑专用：更快模型 + 更高 token 避免截断
+  chatModel: glm-4-flash
+  # 图片解析用的视觉模型（glm-4v-flash 不支持 Base64，需用 glm-4v-plus 或 glm-4.6v）
+  visionModel: glm-4v-plus
+  # 复盘专用：纯文本分析，用 flash 提速（不要用 glm-4.6v 等多模态慢模型）
+  replayModel: glm-4-flash
+
+
+# 管理员密码：设置环境变量 APP_ADMIN_PASSWORD 或在本机 application-local.yml 填写；未配置则不校验
+# 网站根地址（用于智能助手生成「本站在线 IDE」链接，如 http://8.138.47.162:8080）
+# 可选：算法题未在题库且无本地映射时，联网搜索力扣/牛客原题链接。
+# 推荐 SearchCans（provider: searchcans）：注册即送 100 次额度，支持 Bing，国内可用。密钥在 searchcans.com → API Keys 创建。
+# 也可选 bing（Azure 订阅密钥）或 serper（Google，需 serper.dev API Key）
+app:
+  admin-password: "${APP_ADMIN_PASSWORD:}"
+  base-url: ""
+  algorithm-search:
+    enabled: false            # 默认关闭；需要联网搜索时，在本地 application-local.yml 打开并配置 api-key
+    provider: "searchcans"    # searchcans / bing / serper，可在本地覆盖
+    api-key: "${ALGO_SEARCH_API_KEY:}"   # 勿在本文件写死真实 key，改用环境变量或 application-local.yml
+    serper-api-url: "https://google.serper.dev/search"
+
+# 小红书爬虫 FastAPI 微服务地址（Spider_XHS-master/server.py）
+xhs-spider:
+  api-url: "http://localhost:8686"
+
+# 向量检索配置 (Qdrant + 智谱 Embedding)
+rag:
+  qdrant:
+    host: "localhost"
+    port: 6334
+    collection: "interview_experiences"
+  embedding:
+    api-key: "${ZHIPU_API_KEY:}"
+    model: "embedding-3"
+    base-url: "https://open.bigmodel.cn/api/paas/v4/"
+
+server:
+  port: 8080
+
+# 日志级别配置
+logging:
+  level:
+    # LangChain4j 模型交互日志（显示 LLM 请求/响应 + 工具调用决策）
+    "[dev.langchain4j.model]": DEBUG
+    # 小红书爬虫集成服务日志
+    "[com.interview.assistant.service.XhsSpiderService]": DEBUG
+    # 面试助手工具调用日志
+    "[com.interview.assistant.service.InterviewAssistantTools]": DEBUG
+    "[dev.langchain4j.mcp]": DEBUG
+  charset:
+    console: GBK
+    
