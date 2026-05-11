@@ -1,0 +1,187 @@
+package com.interview.assistant.controller;
+
+import com.interview.assistant.entity.MockInterviewSession;
+import com.interview.assistant.service.MockInterviewService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/mock-interview")
+@CrossOrigin
+public class MockInterviewController {
+
+    private static final Logger log = LoggerFactory.getLogger(MockInterviewController.class);
+    private final MockInterviewService mockInterviewService;
+
+    public MockInterviewController(MockInterviewService mockInterviewService) {
+        this.mockInterviewService = mockInterviewService;
+    }
+
+    /**
+     * 创建面试会话
+     */
+    @PostMapping("/sessions")
+    public ResponseEntity<?> createSession(@RequestBody Map<String, Object> request) {
+        String company = (String) request.get("company");
+        String department = (String) request.get("department");
+        String resumeText = (String) request.get("resumeText");
+        String interviewerStyle = request.getOrDefault("interviewerStyle", "GENTLE").toString();
+        String difficulty = request.getOrDefault("difficulty", "MEDIUM").toString();
+        // mandatoryQuestions: 前端传来的是 JSON 数组，转为字符串存储
+        Object mqRaw = request.get("mandatoryQuestions");
+        String mandatoryQuestions = null;
+        if (mqRaw instanceof java.util.List<?> list && !list.isEmpty()) {
+            try {
+                mandatoryQuestions = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(list);
+            } catch (Exception ignored) {}
+        }
+        // questionCounts: 前端传来的是 JSON 对象
+        Object qcRaw = request.get("questionCounts");
+        String interviewConfig = null;
+        if (qcRaw instanceof java.util.Map<?, ?> map && !map.isEmpty()) {
+            try {
+                interviewConfig = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(map);
+            } catch (Exception ignored) {}
+        }
+
+        try {
+            MockInterviewSession session = mockInterviewService.createSession(
+                    company, department, resumeText, interviewerStyle,
+                    mandatoryQuestions, difficulty, interviewConfig);
+            return ResponseEntity.ok(Map.of(
+                    "sessionId", session.getSessionId(),
+                    "status", session.getStatus().name()
+            ));
+        } catch (Exception e) {
+            log.error("创建模拟面试会话失败", e);
+            return ResponseEntity.status(500).body(Map.of("error", "创建会话失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 生成面试计划
+     */
+    @PostMapping("/sessions/{sessionId}/plan")
+    public ResponseEntity<?> generatePlan(@PathVariable String sessionId) {
+        try {
+            MockInterviewSession session = mockInterviewService.generatePlan(sessionId);
+            return ResponseEntity.ok(Map.of(
+                    "sessionId", session.getSessionId(),
+                    "status", session.getStatus().name(),
+                    "planJson", session.getPlan() != null ? session.getPlan().getPlanJson() : null,
+                    "estimatedDurationMinutes", session.getEstimatedDurationMinutes()
+            ));
+        } catch (Exception e) {
+            log.error("生成面试计划失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * 开始面试（获取第一题）
+     */
+    @PostMapping("/sessions/{sessionId}/start")
+    public ResponseEntity<?> startInterview(@PathVariable String sessionId) {
+        try {
+            Map<String, Object> result = mockInterviewService.startInterview(sessionId);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("开始面试失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * 提交候选人回答，获取面试官回复（追问或下一题）
+     */
+    @PostMapping("/sessions/{sessionId}/answer")
+    public ResponseEntity<?> answer(@PathVariable String sessionId, @RequestBody Map<String, String> request) {
+        String candidateAnswer = request.get("answer");
+        if (candidateAnswer == null || candidateAnswer.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "回答内容不能为空"));
+        }
+        try {
+            Map<String, Object> result = mockInterviewService.answer(sessionId, candidateAnswer);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("回答处理失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * 结束面试，触发生成报告
+     */
+    @PostMapping("/sessions/{sessionId}/end")
+    public ResponseEntity<?> endInterview(@PathVariable String sessionId) {
+        try {
+            Map<String, Object> result = mockInterviewService.endInterview(sessionId);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("结束面试失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * 获取面试进度状态
+     */
+    @GetMapping("/sessions/{sessionId}/progress")
+    public ResponseEntity<?> getProgress(@PathVariable String sessionId) {
+        try {
+            Map<String, Object> result = mockInterviewService.getProgress(sessionId);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("获取进度失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * 获取历史面试会话列表
+     */
+    @GetMapping("/sessions")
+    public ResponseEntity<List<MockInterviewSession>> listSessions() {
+        return ResponseEntity.ok(mockInterviewService.listSessions());
+    }
+
+    /**
+     * 获取具体会话详情（含对话、计划、报告）
+     */
+    @GetMapping("/sessions/by-id/{id}")
+    public ResponseEntity<?> getSessionDetailById(@PathVariable Long id) {
+        MockInterviewSession session = mockInterviewService.getSessionDetailById(id);
+        if (session == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(session);
+    }
+    
+    @GetMapping("/sessions/{sessionId}")
+    public ResponseEntity<?> getSessionDetailBySessionId(@PathVariable String sessionId) {
+        MockInterviewSession session = mockInterviewService.getSessionDetail(sessionId);
+        if (session == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(session);
+    }
+
+    /**
+     * 删除会话
+     */
+    @DeleteMapping("/sessions/{id}")
+    public ResponseEntity<?> deleteSession(@PathVariable Long id) {
+        try {
+            mockInterviewService.deleteSession(id);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            log.error("删除会话失败, id={}", id, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+}

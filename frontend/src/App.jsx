@@ -6,6 +6,7 @@ import AIInterview from './pages/AIInterview'
 import Replay from './pages/Replay'
 import SmartAssistant from './pages/SmartAssistant'
 import Resumes from './pages/Resumes'
+import MockInterview from './pages/MockInterview/MockInterview'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="resumes" element={<Resumes />} />
         <Route path="interviews" element={<InterviewSearch />} />
         <Route path="ai-interview" element={<AIInterview />} />
+        <Route path="mock-interview/*" element={<MockInterview />} />
         <Route path="replay" element={<Replay />} />
         <Route path="assistant" element={<SmartAssistant />} />
       </Route>

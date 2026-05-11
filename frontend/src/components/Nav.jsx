@@ -6,7 +6,8 @@ const navItems = [
   { path: '/', label: '首页' },
   { path: '/resumes', label: '简历+投递' },
   { path: '/interviews', label: '面经搜索' },
-  { path: '/ai-interview', label: 'AI 面试模拟' },
+  { path: '/mock-interview', label: '结构化面试' },
+  { path: '/ai-interview', label: '原 AI 面试' },
   { path: '/replay', label: '面试复盘' },
   { path: '/assistant', label: '智能助手' },
 ]

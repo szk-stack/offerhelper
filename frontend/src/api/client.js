@@ -412,4 +412,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ language, code, stdin, acmMode }),
     }),
+
+  // Mock Interview
+  createMockSession: (company, department, resumeText, interviewerStyle, mandatoryQuestions, difficulty, questionCounts) =>
+    request('/mock-interview/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ company, department, resumeText, interviewerStyle, mandatoryQuestions, difficulty, questionCounts }),
+    }),
+  generateMockPlan: (sessionId) =>
+    request(`/mock-interview/sessions/${sessionId}/plan`, { method: 'POST' }),
+  startMockInterview: (sessionId) =>
+    request(`/mock-interview/sessions/${sessionId}/start`, { method: 'POST' }),
+  answerMockInterview: (sessionId, answer) =>
+    request(`/mock-interview/sessions/${sessionId}/answer`, {
+      method: 'POST',
+      body: JSON.stringify({ answer }),
+    }),
+  endMockInterview: (sessionId) =>
+    request(`/mock-interview/sessions/${sessionId}/end`, { method: 'POST' }),
+  getMockProgress: (sessionId) => request(`/mock-interview/sessions/${sessionId}/progress`),
+  getMockSessions: () => request('/mock-interview/sessions'),
+  getMockSession: (sessionId) => request(`/mock-interview/sessions/${sessionId}`),
+  deleteMockSession: (id) => request(`/mock-interview/sessions/${id}`, { method: 'DELETE' }),
 }

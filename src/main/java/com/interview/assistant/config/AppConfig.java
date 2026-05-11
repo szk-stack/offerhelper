@@ -4,7 +4,9 @@ import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
-import dev.langchain4j.store.embedding.qdrant.QdrantEmbeddingStore;
+import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
+// import dev.langchain4j.store.embedding.qdrant.QdrantEmbeddingStore;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -82,11 +84,8 @@ public class AppConfig implements WebMvcConfigurer {
 
     @Bean
     public EmbeddingStore<TextSegment> embeddingStore() {
-        return QdrantEmbeddingStore.builder()
-                .host(qdrantHost)
-                .port(qdrantPort)
-                .collectionName(qdrantCollection)
-                .build();
+        // 为了方便测试模拟面试模块，暂时改用内存向量库，避免 Qdrant 连不上的报错
+        return new InMemoryEmbeddingStore<>();
     }
 
     @Bean

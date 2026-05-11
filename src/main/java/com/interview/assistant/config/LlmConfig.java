@@ -1,7 +1,9 @@
 package com.interview.assistant.config;
 
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,6 +33,12 @@ public class LlmConfig {
     /** 复盘专用：纯文本分析，必须用 flash 等快速模型，不要用 glm-4.6v 等多模态模型 */
     @Value("${zhipu.replayModel:glm-4-flash}")
     private String replayModel;
+
+    @Value("${zhipu.mockInterviewPlanModel:glm-5.1}")
+    private String mockInterviewPlanModel;
+
+    @Value("${zhipu.mockInterviewChatModel:GLM-4.7-FlashX}")
+    private String mockInterviewChatModel;
 
     private static final String ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 
@@ -101,6 +109,65 @@ public class LlmConfig {
                 .temperature(0.5)
                 .maxTokens(8192)
                 .timeout(Duration.ofMinutes(2))
+                .build();
+    }
+
+    /**
+     * 模拟面试官 - 规划与报告生成专用：
+     * 需要生成大量结构化 JSON，使用最好的模型（如 glm-5.1），保证结构稳定性。
+     */
+    @Bean("mockInterviewPlanModel")
+    public ChatModel mockInterviewPlanModel() {
+        String key = (apiKey != null && !apiKey.isEmpty()) ? apiKey : System.getenv("ZHIPU_API_KEY");
+        String pm = (mockInterviewPlanModel != null && !mockInterviewPlanModel.isBlank()) ? mockInterviewPlanModel : "glm-5.1";
+        return OpenAiChatModel.builder()
+                .baseUrl(ZHIPU_BASE_URL)
+                .apiKey(key)
+                .modelName(pm)  // 使用配置的计划生成模型
+                .temperature(0.5)
+                .maxTokens(8192)
+                .timeout(Duration.ofMinutes(2))
+                .logRequests(true)
+                .logResponses(true)
+                .build();
+    }
+
+    /**
+     * 模拟面试官 - 对话交互专用：
+     * 需要低耗时快速回复优化体验，使用闪电模型（如 GLM-4.7-FlashX）。
+     */
+    @Bean("mockInterviewChatModel")
+    public ChatModel mockInterviewChatModel() {
+        String key = (apiKey != null && !apiKey.isEmpty()) ? apiKey : System.getenv("ZHIPU_API_KEY");
+        String cm = (mockInterviewChatModel != null && !mockInterviewChatModel.isBlank()) ? mockInterviewChatModel : "GLM-4.7-FlashX";
+        return OpenAiChatModel.builder()
+                .baseUrl(ZHIPU_BASE_URL)
+                .apiKey(key)
+                .modelName(cm)  // 使用配置的对话交互极速模型
+                .temperature(0.6)
+                .maxTokens(4096)
+                .timeout(Duration.ofMinutes(3))
+                .logRequests(true)
+                .logResponses(true)
+                .build();
+    }
+
+    /**
+     * 流式输出模型（SSE）：
+     * 直接对接前端 SSE，优化用户体验（首字返回时间低于1秒）
+     */
+    @Bean("mockInterviewStreamingChatModel")
+    public StreamingChatModel mockInterviewStreamingChatModel() {
+        String key = (apiKey != null && !apiKey.isEmpty()) ? apiKey : System.getenv("ZHIPU_API_KEY");
+        String cm = (mockInterviewChatModel != null && !mockInterviewChatModel.isBlank()) ? mockInterviewChatModel : "glm-4-flash";
+        return OpenAiStreamingChatModel.builder()
+                .baseUrl(ZHIPU_BASE_URL)
+                .apiKey(key)
+                .modelName(cm)  // 流式默认也用极速模型
+                .temperature(0.6)
+                .timeout(Duration.ofMinutes(3))
+                .logRequests(true)
+                .logResponses(true)
                 .build();
     }
 }
