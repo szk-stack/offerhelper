@@ -1,8 +1,10 @@
 package com.interview.assistant.config;
 
+import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
+import dev.langchain4j.model.output.Response;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 // import dev.langchain4j.store.embedding.qdrant.QdrantEmbeddingStore;
@@ -19,6 +21,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.resource.PathResourceResolver;
 
 import java.io.IOException;
+import java.util.List;
 
 @Configuration
 public class AppConfig implements WebMvcConfigurer {
@@ -68,18 +71,62 @@ public class AppConfig implements WebMvcConfigurer {
                 .allowedHeaders("*");
     }
 
+    /**
+     * Embedding 模型改为懒加载：没有配置 Key 时不再让整个应用启动失败，
+     * 而是等到真正做向量检索时抛错，由 RagService 捕获后降级为空结果。
+     */
     @Bean
     public EmbeddingModel embeddingModel() {
-        if (embeddingApiKey == null || embeddingApiKey.isBlank()) {
-            throw new IllegalArgumentException(
-                    "ZHIPU_API_KEY is not set. Cannot initialize Zhipu Embedding Model.");
+        return new LazyEmbeddingModel(embeddingApiKey, embeddingBaseUrl, embeddingModel);
+    }
+
+    static final class LazyEmbeddingModel implements EmbeddingModel {
+
+        private final String apiKey;
+        private final String baseUrl;
+        private final String modelName;
+        private volatile EmbeddingModel delegate;
+
+        LazyEmbeddingModel(String apiKey, String baseUrl, String modelName) {
+            this.apiKey = apiKey;
+            this.baseUrl = baseUrl;
+            this.modelName = modelName;
         }
-        // 智谱 API is compatible with OpenAI API format
-        return OpenAiEmbeddingModel.builder()
-                .baseUrl(embeddingBaseUrl)
-                .apiKey(embeddingApiKey)
-                .modelName(embeddingModel)
-                .build();
+
+        private EmbeddingModel delegate() {
+            if (delegate == null) {
+                synchronized (this) {
+                    if (delegate == null) {
+                        String key = (apiKey != null && !apiKey.isBlank())
+                                ? apiKey : System.getenv("ZHIPU_API_KEY");
+                        if (key == null || key.isBlank()) {
+                            throw new IllegalStateException("未配置 Embedding API Key，面经向量检索不可用");
+                        }
+                        delegate = OpenAiEmbeddingModel.builder()
+                                .baseUrl(baseUrl)
+                                .apiKey(key)
+                                .modelName(modelName)
+                                .build();
+                    }
+                }
+            }
+            return delegate;
+        }
+
+        @Override
+        public Response<Embedding> embed(String text) {
+            return delegate().embed(text);
+        }
+
+        @Override
+        public Response<List<Embedding>> embedAll(List<TextSegment> segments) {
+            return delegate().embedAll(segments);
+        }
+
+        @Override
+        public int dimension() {
+            return delegate().dimension();
+        }
     }
 
     @Bean

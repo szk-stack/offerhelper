@@ -8,8 +8,10 @@ import com.interview.assistant.service.MockInterviewService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.Map;
@@ -114,6 +116,29 @@ public class MockInterviewController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("回答处理失败, sessionId={}", sessionId, e);
+            return errorResponse(e);
+        }
+    }
+
+    /**
+     * 提交候选人回答并流式返回面试官回复（SSE）。
+     * 事件：chunk（{"text": "..."}）/ done（完整响应体）/ error（{"message": "..."}）
+     */
+    @PostMapping("/sessions/{sessionId}/answer/stream")
+    public Object answerStream(@PathVariable String sessionId,
+                               @RequestBody Map<String, String> request,
+                               jakarta.servlet.http.HttpServletResponse response) {
+        // 关闭 nginx 缓冲，保证 token 能实时到达浏览器
+        response.setHeader("Cache-Control", "no-cache");
+        response.setHeader("X-Accel-Buffering", "no");
+        String candidateAnswer = request != null ? request.get("answer") : null;
+        if (candidateAnswer == null || candidateAnswer.isBlank()) {
+            throw new IllegalArgumentException("回答内容不能为空");
+        }
+        try {
+            return mockInterviewService.answerStream(sessionId, candidateAnswer);
+        } catch (Exception e) {
+            log.error("流式回答失败, sessionId={}", sessionId, e);
             return errorResponse(e);
         }
     }

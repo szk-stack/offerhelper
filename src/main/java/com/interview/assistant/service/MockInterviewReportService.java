@@ -45,6 +45,7 @@ public class MockInterviewReportService {
     private final MockInterviewDialogueRepository dialogueRepo;
     private final MockInterviewReportRepository reportRepo;
     private final MockInterviewSessionRepository sessionRepo;
+    private final LlmRouter llmRouter;
 
     /** 防止同一场面试被并发重复生成 */
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
@@ -52,11 +53,13 @@ public class MockInterviewReportService {
     public MockInterviewReportService(@Qualifier("mockInterviewPlanModel") ChatModel mockInterviewPlanModel,
                                       MockInterviewDialogueRepository dialogueRepo,
                                       MockInterviewReportRepository reportRepo,
-                                      MockInterviewSessionRepository sessionRepo) {
+                                      MockInterviewSessionRepository sessionRepo,
+                                      LlmRouter llmRouter) {
         this.mockInterviewPlanModel = mockInterviewPlanModel;
         this.dialogueRepo = dialogueRepo;
         this.reportRepo = reportRepo;
         this.sessionRepo = sessionRepo;
+        this.llmRouter = llmRouter;
     }
 
     private static final String REPORT_SYSTEM_PROMPT = """
@@ -104,26 +107,29 @@ public class MockInterviewReportService {
 
     /**
      * 异步生成报告。会话结束后调用，不阻塞 /end 请求。
+     * <p>
+     * 异步线程没有请求上下文，必须显式带上 tenantId 才能用对租户的模型配置。
      */
     @Async("taskExecutor")
-    public void generateReportAsync(String sessionId) {
+    public void generateReportAsync(String sessionId, Long tenantId) {
         if (!inFlight.add(sessionId)) {
             log.info("报告正在生成中，忽略重复请求, sessionId={}", sessionId);
             return;
         }
-        MockInterviewSession session = null;
         try {
-            session = sessionRepo.findBySessionId(sessionId).orElse(null);
-            if (session == null) {
-                log.warn("生成报告时会话不存在, sessionId={}", sessionId);
-                return;
-            }
-            generateReport(session);
-        } catch (Exception e) {
-            log.error("生成报告失败, sessionId={}", sessionId, e);
-            if (session != null) {
-                markFailed(session, "报告生成异常：" + e.getMessage(), null);
-            }
+            llmRouter.withTenant(tenantId, () -> {
+                MockInterviewSession session = sessionRepo.findBySessionId(sessionId).orElse(null);
+                if (session == null) {
+                    log.warn("生成报告时会话不存在, sessionId={}", sessionId);
+                    return;
+                }
+                try {
+                    generateReport(session);
+                } catch (Exception e) {
+                    log.error("生成报告失败, sessionId={}", sessionId, e);
+                    markFailed(session, "报告生成异常：" + e.getMessage(), null);
+                }
+            });
         } finally {
             inFlight.remove(sessionId);
         }

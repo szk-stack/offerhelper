@@ -13,16 +13,20 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
@@ -38,6 +42,9 @@ public class MockInterviewService {
 
     private final ChatModel mockInterviewPlanModel;
     private final ChatModel mockInterviewChatModel;
+    private final StreamingChatModel mockInterviewStreamingChatModel;
+    private final LlmRouter llmRouter;
+    private final Executor streamExecutor;
 
     private final RagService ragService;
     private final InterviewFlowEngine flowEngine;
@@ -50,8 +57,14 @@ public class MockInterviewService {
     /** sessionId → 内存中的对话上下文 */
     private final Map<String, InterviewContext> contexts = new ConcurrentHashMap<>();
 
+    /** 同一场面试同时只允许一个回答在生成，避免消息与指针错乱 */
+    private final Set<String> answeringSessions = ConcurrentHashMap.newKeySet();
+
     public MockInterviewService(@Qualifier("mockInterviewPlanModel") ChatModel mockInterviewPlanModel,
                                 @Qualifier("mockInterviewChatModel") ChatModel mockInterviewChatModel,
+                                @Qualifier("mockInterviewStreamingChatModel") StreamingChatModel mockInterviewStreamingChatModel,
+                                LlmRouter llmRouter,
+                                @Qualifier("interviewStreamExecutor") Executor streamExecutor,
                                 RagService ragService,
                                 InterviewFlowEngine flowEngine,
                                 MockInterviewReportService reportService,
@@ -61,6 +74,9 @@ public class MockInterviewService {
                                 MockInterviewReportRepository reportRepo) {
         this.mockInterviewPlanModel = mockInterviewPlanModel;
         this.mockInterviewChatModel = mockInterviewChatModel;
+        this.mockInterviewStreamingChatModel = mockInterviewStreamingChatModel;
+        this.llmRouter = llmRouter;
+        this.streamExecutor = streamExecutor;
         this.ragService = ragService;
         this.flowEngine = flowEngine;
         this.reportService = reportService;
@@ -202,70 +218,174 @@ public class MockInterviewService {
     // ========================== 4. 候选人回答 & AI 追问/下一题 ==========================
 
     /**
-     * 处理候选人回答，返回面试官的回应（追问或下一题）
+     * 处理候选人回答，返回面试官的回应（追问或下一题）。同步版本，保留给旧前端/接口。
      */
     public Map<String, Object> answer(String sessionId, String candidateAnswer) {
+        AnswerTurn turn = prepareAnswer(sessionId, candidateAnswer);
+        try {
+            List<ChatMessage> fullMessages = new ArrayList<>();
+            fullMessages.add(SystemMessage.from(turn.ctx.systemPrompt));
+            fullMessages.addAll(turn.ctx.memory.messages());
+
+            long startTime = System.currentTimeMillis();
+            ChatResponse resp = mockInterviewChatModel.chat(fullMessages);
+            log.info("======== [AI面试官] 同步生成响应耗时: {} 秒 ========",
+                    String.format("%.2f", (System.currentTimeMillis() - startTime) / 1000.0));
+            return finishAnswer(turn, resp.aiMessage().text());
+        } catch (Exception e) {
+            rollback(turn);
+            throw e;
+        } finally {
+            answeringSessions.remove(sessionId);
+        }
+    }
+
+    /**
+     * 流式回答：SSE 推送模型输出，结束时再统一落库并推进流程。
+     */
+    public SseEmitter answerStream(String sessionId, String candidateAnswer) {
+        AnswerTurn turn = prepareAnswer(sessionId, candidateAnswer);
+        SseEmitter emitter = new SseEmitter(180_000L);
+        emitter.onTimeout(() -> {
+            answeringSessions.remove(sessionId);
+            emitter.complete();
+        });
+        emitter.onError(e -> answeringSessions.remove(sessionId));
+
+        streamExecutor.execute(() -> {
+            try {
+                llmRouter.withTenant(turn.tenantId, () -> {
+                    List<ChatMessage> messages = new ArrayList<>();
+                    messages.add(SystemMessage.from(turn.ctx.systemPrompt));
+                    messages.addAll(turn.ctx.memory.messages());
+
+                    StringBuilder full = new StringBuilder();
+                    LeadingTagFilter filter = new LeadingTagFilter();
+                    mockInterviewStreamingChatModel.chat(messages, new StreamingChatResponseHandler() {                        @Override
+                        public void onPartialResponse(String partialResponse) {
+                            if (partialResponse == null || partialResponse.isEmpty()) {
+                                return;
+                            }
+                            full.append(partialResponse);
+                            String visible = filter.accept(partialResponse);
+                            if (!visible.isEmpty()) {
+                                sendChunk(emitter, visible);
+                            }
+                        }
+
+                        @Override
+                        public void onCompleteResponse(ChatResponse response) {
+                            try {
+                                String visible = filter.finish();
+                                if (!visible.isEmpty()) {
+                                    sendChunk(emitter, visible);
+                                }
+                                String text = response != null && response.aiMessage() != null
+                                        && response.aiMessage().text() != null
+                                        ? response.aiMessage().text() : full.toString();
+                                Map<String, Object> result = finishAnswer(turn, text);
+                                emitter.send(SseEmitter.event().name("done").data(result));
+                                emitter.complete();
+                            } catch (Exception e) {
+                                log.error("流式回答收尾失败, sessionId={}", sessionId, e);
+                                rollback(turn);
+                                sendError(emitter, e);
+                            } finally {
+                                answeringSessions.remove(sessionId);
+                            }
+                        }
+
+                        @Override
+                        public void onError(Throwable error) {
+                            log.error("流式回答失败, sessionId={}", sessionId, error);
+                            rollback(turn);
+                            sendError(emitter, error);
+                            answeringSessions.remove(sessionId);
+                        }
+                    });
+                    return null;
+                });
+            } catch (Exception e) {
+                log.error("提交流式回答失败, sessionId={}", sessionId, e);
+                rollback(turn);
+                sendError(emitter, e);
+                answeringSessions.remove(sessionId);
+            }
+        });
+        return emitter;
+    }
+
+    /**
+     * 准备阶段：校验归属、锁住会话、落库候选人回答、拼出决策 Prompt。
+     */
+    private AnswerTurn prepareAnswer(String sessionId, String candidateAnswer) {
         MockInterviewSession session = getSessionOrThrow(sessionId);
         if (session.getStatus() != MockInterviewSession.Status.IN_PROGRESS) {
             throw new IllegalStateException("面试未在进行中");
         }
+        if (!answeringSessions.add(sessionId)) {
+            throw new IllegalStateException("上一条回答还在处理中，请稍候");
+        }
+        try {
+            String planJson = session.getPlan().getPlanJson();
+            InterviewContext ctx = contexts.computeIfAbsent(sessionId, id -> rebuildContext(session));
 
-        String planJson = session.getPlan().getPlanJson();
-        InterviewContext ctx = contexts.computeIfAbsent(sessionId,
-                id -> rebuildContext(session));
+            int phaseIdx = session.getCurrentPhaseIndex();
+            int questionIdx = session.getCurrentQuestionIndex();
+            String phaseType = flowEngine.getPhaseType(planJson, phaseIdx);
+            String phaseTitle = flowEngine.getPhaseTitle(planJson, phaseIdx);
+            String questionId = flowEngine.getQuestionId(planJson, phaseIdx, questionIdx);
 
-        int phaseIdx = session.getCurrentPhaseIndex();
-        int questionIdx = session.getCurrentQuestionIndex();
-        String phaseType = flowEngine.getPhaseType(planJson, phaseIdx);
-        String phaseTitle = flowEngine.getPhaseTitle(planJson, phaseIdx);
-        String questionId = flowEngine.getQuestionId(planJson, phaseIdx, questionIdx);
+            MockInterviewDialogue candidateDialogue = saveDialogue(session, "candidate", candidateAnswer,
+                    phaseType, phaseIdx, questionId, session.getCurrentFollowUpCount() > 0);
 
-        // 保存候选人回答
-        saveDialogue(session, "candidate", candidateAnswer, phaseType, phaseIdx,
-                questionId, session.getCurrentFollowUpCount() > 0);
+            String nextQuestionPreview = peekNextQuestionPreview(planJson, session);
+            boolean canFollowUp = isDeepDivePhase(phaseType) && flowEngine.canFollowUp(planJson, session);
 
-        long startTime = System.currentTimeMillis();
+            String prompt = String.format(
+                "候选人最新的回复是：\n\"%s\"\n\n" +
+                "当前处于「%s」阶段（%s）。\n" +
+                "请严格按照以下规则决定你的下一个动作，并在你回复的【最前面】加上隐式标签（必带）：\n\n" +
+                "1. 如果候选人没听懂或要求解释，以 [CLARIFICATION] 开头，然后用通俗的语言解释上一个问题。" +
+                "解释控制在 300 字以内，讲完再抛一个更简单的验证性问题，不要把标准答案一次性全部讲完。\n\n" +
+                "2. 如果候选人给出了实质性回答，但缺少细节或量化指标（且该环节支持深挖：%s），以 [FOLLOW_UP] 开头，" +
+                "先对候选人的回答做简要评价（指出哪里答得好、哪里有遗漏或不准确），" +
+                "如果回答有错误或不完整，必须先给出当前问题的正确参考答案（讲清关键知识点），" +
+                "然后再针对其回答中薄弱的一个技术点进行深挖追问。\n\n" +
+                "3. 如果候选人回答完整且准确，或者放弃回答，或者该环节不能深挖，以 [NEXT] 开头，按如下格式回复：\n" +
+                "   a) 先对候选人的回答给出评价（1-2句话，指出优点和不足）。\n" +
+                "   b) 如果候选人的回答不够完整或存在错误，你必须给出该问题的正确、完整的参考答案（关键知识点要讲清楚，不要含糊）。如果候选人回答得很好则跳过此步。\n" +
+                "   c) 然后自然过渡到下一题：\n【%s】\n\n" +
+                "注意：只需输出前缀标签+你要说的话，不要输出其他多余字符。" +
+                "评价要具体客观，有实质内容，不要只说\"回答得不错\"之类的空话。\n" +
+                "给出参考答案时要体现专业深度，帮助候选人真正学到东西。",
+                candidateAnswer, phaseTitle, phaseType, canFollowUp ? "是" : "否", nextQuestionPreview
+            );
 
-        String nextQuestionPreview = peekNextQuestionPreview(planJson, session);
-        boolean canFollowUp = isDeepDivePhase(phaseType) && flowEngine.canFollowUp(planJson, session);
+            // 临时放入短期记忆进行决策（不落库保存这一大段提示词）
+            ctx.memory.add(UserMessage.from(prompt));
 
-        String prompt = String.format(
-            "候选人最新的回复是：\n\"%s\"\n\n" +
-            "当前处于「%s」阶段（%s）。\n" +
-            "请严格按照以下规则决定你的下一个动作，并在你回复的【最前面】加上隐式标签（必带）：\n\n" +
-            "1. 如果候选人没听懂或要求解释，以 [CLARIFICATION] 开头，然后用通俗的语言解释上一个问题。" +
-            "解释控制在 300 字以内，讲完再抛一个更简单的验证性问题，不要把标准答案一次性全部讲完。\n\n" +
-            "2. 如果候选人给出了实质性回答，但缺少细节或量化指标（且该环节支持深挖：%s），以 [FOLLOW_UP] 开头，" +
-            "先对候选人的回答做简要评价（指出哪里答得好、哪里有遗漏或不准确），" +
-            "如果回答有错误或不完整，必须先给出当前问题的正确参考答案（讲清关键知识点），" +
-            "然后再针对其回答中薄弱的一个技术点进行深挖追问。\n\n" +
-            "3. 如果候选人回答完整且准确，或者放弃回答，或者该环节不能深挖，以 [NEXT] 开头，按如下格式回复：\n" +
-            "   a) 先对候选人的回答给出评价（1-2句话，指出优点和不足）。\n" +
-            "   b) 如果候选人的回答不够完整或存在错误，你必须给出该问题的正确、完整的参考答案（关键知识点要讲清楚，不要含糊）。如果候选人回答得很好则跳过此步。\n" +
-            "   c) 然后自然过渡到下一题：\n【%s】\n\n" +
-            "注意：只需输出前缀标签+你要说的话，不要输出其他多余字符。" +
-            "评价要具体客观，有实质内容，不要只说\"回答得不错\"之类的空话。\n" +
-            "给出参考答案时要体现专业深度，帮助候选人真正学到东西。",
-            candidateAnswer, phaseTitle, phaseType, canFollowUp ? "是" : "否", nextQuestionPreview
-        );
+            return new AnswerTurn(session, candidateAnswer, planJson, phaseIdx, questionIdx,
+                    phaseType, questionId, ctx, canFollowUp,
+                    candidateDialogue != null ? candidateDialogue.getId() : null,
+                    session.getTenantId());
+        } catch (RuntimeException e) {
+            answeringSessions.remove(sessionId);
+            throw e;
+        }
+    }
 
-        // 临时放入短期记忆进行决策（不落库保存这一大段提示词）
-        ctx.memory.add(UserMessage.from(prompt));
-
-        List<ChatMessage> fullMessages = new ArrayList<>();
-        fullMessages.add(SystemMessage.from(ctx.systemPrompt));
-        fullMessages.addAll(ctx.memory.messages());
-
-        ChatResponse resp = mockInterviewChatModel.chat(fullMessages);
-        String fullReply = resp.aiMessage().text().trim();
+    /**
+     * 收尾阶段：解析标签、更新追问计数、推进指针、落库面试官回复。
+     */
+    private Map<String, Object> finishAnswer(AnswerTurn turn, String rawReply) {
+        MockInterviewSession session = turn.session;
+        String planJson = turn.planJson;
+        String fullReply = rawReply == null ? "" : rawReply.trim();
 
         // 恢复真实上下文（移除临时决策用的超长 Prompt，仅放入干净的用户回答文本）
-        ctx.memory.messages().remove(ctx.memory.messages().size() - 1);
-        ctx.memory.add(UserMessage.from(candidateAnswer));
-
-        long endTime = System.currentTimeMillis();
-        double waitSeconds = (endTime - startTime) / 1000.0;
-        log.info("======== [AI面试官] 统一生成响应耗时: {} 秒 ========", String.format("%.2f", waitSeconds));
+        removeLastMemoryMessage(turn.ctx);
+        turn.ctx.memory.add(UserMessage.from(turn.candidateAnswer));
 
         String intent = "NEXT";
         String interviewerReply = fullReply;
@@ -277,32 +397,29 @@ public class MockInterviewService {
             interviewerReply = fullReply.substring("[FOLLOW_UP]".length()).trim();
             flowEngine.incrementFollowUp(session);
         } else if (fullReply.startsWith("[NEXT]")) {
-            intent = "NEXT";
             interviewerReply = fullReply.substring("[NEXT]".length()).trim();
         } else if (fullReply.startsWith("[WRAP_UP]")) {
-            intent = "NEXT";
             interviewerReply = fullReply.substring("[WRAP_UP]".length()).trim();
-        } else {
-            if (canFollowUp && (fullReply.contains("追问") || fullReply.contains("展开说说"))) {
-                intent = "FOLLOW_UP";
-                flowEngine.incrementFollowUp(session);
-            }
+        } else if (turn.canFollowUp && (fullReply.contains("追问") || fullReply.contains("展开说说"))) {
+            intent = "FOLLOW_UP";
+            flowEngine.incrementFollowUp(session);
         }
 
-        ctx.memory.add(AiMessage.from(interviewerReply));
+        turn.ctx.memory.add(AiMessage.from(interviewerReply));
 
         // 这条回复是「对刚回答那道题的点评 + 新问题」，归属按被回答的题记录，
         // 否则逐题报告会整体错位到下一题。
-        String reviewedPhaseType = phaseType;
-        int reviewedPhaseIdx = phaseIdx;
-        String reviewedQuestionId = questionId;
+        String reviewedPhaseType = turn.phaseType;
+        int reviewedPhaseIdx = turn.phaseIdx;
+        String reviewedQuestionId = turn.questionId;
 
         if ("NEXT".equals(intent)) {
             boolean hasNext = flowEngine.advanceToNextQuestion(planJson, session);
             if (!hasNext) {
-                saveDialogue(session, "interviewer", interviewerReply, "WRAP_UP", phaseIdx, questionId, false);
+                saveDialogue(session, "interviewer", interviewerReply, "WRAP_UP",
+                        turn.phaseIdx, turn.questionId, false);
                 sessionRepo.save(session);
-                return endInterview(sessionId);
+                return endInterviewInternal(session);
             }
         }
 
@@ -315,13 +432,55 @@ public class MockInterviewService {
                 flowEngine.getPhaseTitle(planJson, session.getCurrentPhaseIndex()));
     }
 
+    /** 模型调用失败时回滚：删掉刚写入的候选人回答、移除临时 Prompt，避免重试产生重复记录 */
+    private void rollback(AnswerTurn turn) {
+        try {
+            removeLastMemoryMessage(turn.ctx);
+            if (turn.candidateDialogueId != null) {
+                dialogueRepo.deleteById(turn.candidateDialogueId);
+            }
+        } catch (Exception e) {
+            log.warn("回滚回答失败: {}", e.getMessage());
+        }
+    }
+
+    private void removeLastMemoryMessage(InterviewContext ctx) {
+        List<ChatMessage> messages = ctx.memory.messages();
+        if (!messages.isEmpty()) {
+            messages.remove(messages.size() - 1);
+        }
+    }
+
+    private void sendChunk(SseEmitter emitter, String text) {
+        try {
+            emitter.send(SseEmitter.event().name("chunk").data(Map.of("text", text)));
+        } catch (Exception e) {
+            log.debug("SSE 推送失败（客户端可能已断开）: {}", e.getMessage());
+        }
+    }
+
+    private void sendError(SseEmitter emitter, Throwable error) {
+        try {
+            String message = error != null && error.getMessage() != null
+                    ? error.getMessage() : "生成失败，请重试";
+            emitter.send(SseEmitter.event().name("error").data(Map.of("message", message)));
+            emitter.complete();
+        } catch (Exception ignored) {
+            // 客户端已断开
+        }
+    }
+
     // ========================== 5. 结束面试 ==========================
 
     /**
      * 结束面试并触发报告生成
      */
     public Map<String, Object> endInterview(String sessionId) {
-        MockInterviewSession session = getSessionOrThrow(sessionId);
+        return endInterviewInternal(getSessionOrThrow(sessionId));
+    }
+
+    private Map<String, Object> endInterviewInternal(MockInterviewSession session) {
+        String sessionId = session.getSessionId();
         boolean alreadyCompleted = session.getStatus() == MockInterviewSession.Status.COMPLETED;
 
         // 生成结束语
@@ -338,7 +497,7 @@ public class MockInterviewService {
                     "WRAP_UP", session.getCurrentPhaseIndex(), null, false);
 
             // 报告异步生成：/end 立即返回，前端轮询会话详情获取结果
-            reportService.generateReportAsync(sessionId);
+            reportService.generateReportAsync(sessionId, session.getTenantId());
         }
 
         MockInterviewReport report = reportRepo.findBySession_SessionId(sessionId).orElse(null);
@@ -445,7 +604,7 @@ public class MockInterviewService {
                 || session.getStatus() == MockInterviewSession.Status.IN_PROGRESS) {
             throw new IllegalStateException("面试尚未结束，不能生成报告");
         }
-        reportService.generateReportAsync(sessionId);
+        reportService.generateReportAsync(sessionId, session.getTenantId());
 
         Map<String, Object> result = new HashMap<>();
         result.put("sessionId", sessionId);
@@ -571,7 +730,7 @@ public class MockInterviewService {
         return "没有下一题了，这已经是最后一题。请在说完评语后告知面试结束。";
     }
 
-    private void saveDialogue(MockInterviewSession session, String role, String content,
+    private MockInterviewDialogue saveDialogue(MockInterviewSession session, String role, String content,
                                String phaseType, int phaseIndex, String questionId, boolean followUp) {
         int order = dialogueRepo.countBySession_Id(session.getId());
         MockInterviewDialogue dialogue = new MockInterviewDialogue();
@@ -583,7 +742,7 @@ public class MockInterviewService {
         dialogue.setQuestionId(questionId);
         dialogue.setFollowUp(followUp);
         dialogue.setSortOrder(order);
-        dialogueRepo.save(dialogue);
+        return dialogueRepo.save(dialogue);
     }
 
     private Map<String, Object> buildResponse(MockInterviewSession session, String interviewerMessage,
@@ -751,6 +910,92 @@ public class MockInterviewService {
     }
 
     // ========================== 内部类 ==========================
+
+    /** 一次回答的完整上下文，prepare 阶段产出、finish 阶段消费 */
+    private static class AnswerTurn {
+        final MockInterviewSession session;
+        final String candidateAnswer;
+        final String planJson;
+        final int phaseIdx;
+        final int questionIdx;
+        final String phaseType;
+        final String questionId;
+        final InterviewContext ctx;
+        final boolean canFollowUp;
+        final Long candidateDialogueId;
+        final Long tenantId;
+
+        AnswerTurn(MockInterviewSession session, String candidateAnswer, String planJson, int phaseIdx, int questionIdx,
+                   String phaseType, String questionId, InterviewContext ctx, boolean canFollowUp,
+                   Long candidateDialogueId, Long tenantId) {
+            this.session = session;
+            this.candidateAnswer = candidateAnswer;
+            this.planJson = planJson;
+            this.phaseIdx = phaseIdx;
+            this.questionIdx = questionIdx;
+            this.phaseType = phaseType;
+            this.questionId = questionId;
+            this.ctx = ctx;
+            this.canFollowUp = canFollowUp;
+            this.candidateDialogueId = candidateDialogueId;
+            this.tenantId = tenantId;
+        }
+    }
+
+    /**
+     * 流式输出时把开头的 [FOLLOW_UP] / [NEXT] 等隐式标签过滤掉：
+     * 标签可能被拆成多个 token，所以先缓冲，确认后再决定是否原样输出。
+     */
+    static class LeadingTagFilter {
+
+        private static final String[] TAGS = {"[CLARIFICATION]", "[FOLLOW_UP]", "[NEXT]", "[WRAP_UP]"};
+
+        private final StringBuilder buffer = new StringBuilder();
+        private boolean passthrough = false;
+
+        String accept(String token) {
+            if (passthrough) {
+                return token;
+            }
+            buffer.append(token);
+            String text = buffer.toString();
+            String trimmed = text.stripLeading();
+            if (trimmed.isEmpty()) {
+                return "";
+            }
+            if (!trimmed.startsWith("[")) {
+                return flush(text);
+            }
+            int close = trimmed.indexOf(']');
+            if (close < 0) {
+                if (trimmed.length() > 24) {
+                    return flush(text);
+                }
+                return "";
+            }
+            String head = trimmed.substring(0, close + 1);
+            String tail = trimmed.substring(close + 1);
+            for (String tag : TAGS) {
+                if (tag.equals(head)) {
+                    return flush(tail);
+                }
+            }
+            return flush(text);
+        }
+
+        String finish() {
+            if (passthrough) {
+                return "";
+            }
+            return flush(buffer.toString());
+        }
+
+        private String flush(String text) {
+            passthrough = true;
+            buffer.setLength(0);
+            return text;
+        }
+    }
 
     private static class InterviewContext {
         final String systemPrompt;

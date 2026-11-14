@@ -27,7 +27,8 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
         format_sql: true
 
-# 智谱 GLM 配置：正式环境请通过环境变量 ZHIPU_API_KEY 或 application-local.yml 覆盖（本文件不要写死真实密钥）
+# 智谱 GLM 配置：这里的 Key 是「部署级默认值」。
+# 每个账号可以在网页「模型设置」里填写自己的 DeepSeek / 智谱 Key，保存后立即生效，优先于本文件。
 zhipu:
   # 密钥只从环境变量或 application-local.yml（已 gitignore）读取，不要写死在本文件
   apiKey: "${ZHIPU_API_KEY:}"

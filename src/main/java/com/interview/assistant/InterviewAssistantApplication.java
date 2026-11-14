@@ -25,6 +25,18 @@ public class InterviewAssistantApplication {
         return e;
     }
 
+    /** 模拟面试的 SSE 流式回答：每个连接占一个线程，单独给一个池子 */
+    @Bean(name = "interviewStreamExecutor")
+    public Executor interviewStreamExecutor() {
+        ThreadPoolTaskExecutor e = new ThreadPoolTaskExecutor();
+        e.setCorePoolSize(4);
+        e.setMaxPoolSize(12);
+        e.setQueueCapacity(100);
+        e.setThreadNamePrefix("mi-stream-");
+        e.initialize();
+        return e;
+    }
+
     public static void main(String[] args) {
         SpringApplication.run(InterviewAssistantApplication.class, args);
     }

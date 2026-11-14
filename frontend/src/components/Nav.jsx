@@ -51,6 +51,7 @@ export default function Nav() {
         </ul>
         {user && (
           <div className="nav-account">
+            <Link to="/settings" className="nav-account-link" title="大模型设置">模型</Link>
             <Link to="/account" className="nav-account-link" title="账号设置">
               {user.displayName || user.username}
             </Link>

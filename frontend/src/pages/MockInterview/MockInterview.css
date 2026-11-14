@@ -659,3 +659,16 @@
 .history-report-status.generating {
   color: var(--accent);
 }
+
+/* 流式输出的光标 */
+.message-bubble.streaming p {
+  margin-bottom: 0;
+}
+.stream-caret {
+  display: inline-block;
+  margin-left: 2px;
+  animation: stream-caret-blink 1s step-end infinite;
+}
+@keyframes stream-caret-blink {
+  50% { opacity: 0; }
+}

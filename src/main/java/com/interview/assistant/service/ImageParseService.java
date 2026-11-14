@@ -22,7 +22,6 @@ import java.util.Map;
 public class ImageParseService {
 
     private static final Logger log = LoggerFactory.getLogger(ImageParseService.class);
-    private static final String ZHIPU_VISION_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
     @Value("${zhipu.apiKey:}")
     private String apiKey;
@@ -30,8 +29,14 @@ public class ImageParseService {
     @Value("${zhipu.visionModel:glm-4v-plus}")
     private String visionModel;
 
+    private final LlmSettingsService llmSettingsService;
+
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public ImageParseService(LlmSettingsService llmSettingsService) {
+        this.llmSettingsService = llmSettingsService;
+    }
 
     private static final String PARSE_PROMPT = """
         这是一张面经图片，请从中提取并返回 JSON 格式，包含以下字段（若无则填空字符串）：
@@ -52,10 +57,19 @@ public class ImageParseService {
         """;
 
     public Map<String, Object> parseImage(MultipartFile image) {
-        String key = (apiKey != null && !apiKey.isEmpty()) ? apiKey : System.getenv("ZHIPU_API_KEY");
-        if (key == null || key.isEmpty()) {
-            throw new IllegalStateException("智谱 API Key 未配置，无法解析图片");
+        // 视觉能力只有多模态模型支持（DeepSeek 目前没有），按当前租户的配置解析
+        LlmSettingsService.ResolvedLlm config = llmSettingsService.resolve(
+                com.interview.assistant.security.TenantContext.tenantId());
+        String key = config.apiKey();
+        if (key == null || key.isBlank()) {
+            throw new IllegalStateException("尚未配置大模型 API Key，无法解析图片");
         }
+        String visionModel = config.visionModel();
+        if (visionModel == null || visionModel.isBlank()) {
+            throw new IllegalStateException("当前模型不支持图片解析，请在「模型设置」里配置智谱视觉模型");
+        }
+        String visionUrl = (config.baseUrl() != null ? config.baseUrl().replaceAll("/+$", "") : "")
+                + "/chat/completions";
         try {
             String base64 = Base64.getEncoder().encodeToString(image.getBytes());
             String mime = image.getContentType();
@@ -84,7 +98,7 @@ public class ImageParseService {
             ResponseEntity<String> resp;
             try {
                 resp = restTemplate.exchange(
-                    ZHIPU_VISION_URL,
+                    visionUrl,
                     HttpMethod.POST,
                     entity,
                     String.class

@@ -10,6 +10,7 @@ import Resumes from './pages/Resumes'
 import MockInterview from './pages/MockInterview/MockInterview'
 import Login from './pages/Login'
 import Account from './pages/Account'
+import Settings from './pages/Settings'
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
         <Route path="replay" element={<Replay />} />
         <Route path="assistant" element={<SmartAssistant />} />
         <Route path="account" element={<Account />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )

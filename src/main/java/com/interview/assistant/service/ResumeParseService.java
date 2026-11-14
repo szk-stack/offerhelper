@@ -24,16 +24,15 @@ import java.util.Map;
 public class ResumeParseService {
 
     private static final Logger log = LoggerFactory.getLogger(ResumeParseService.class);
-    private static final String ZHIPU_VISION_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
-    @Value("${zhipu.apiKey:}")
-    private String apiKey;
-
-    @Value("${zhipu.visionModel:glm-4v-plus}")
-    private String visionModel;
+    private final LlmSettingsService llmSettingsService;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public ResumeParseService(LlmSettingsService llmSettingsService) {
+        this.llmSettingsService = llmSettingsService;
+    }
 
     private static final String RESUME_IMAGE_PROMPT = """
         这是一份简历的图片，请识别并提取其中的全部文字内容。
@@ -76,10 +75,18 @@ public class ResumeParseService {
     }
 
     private String parseImage(MultipartFile file) {
-        String key = (apiKey != null && !apiKey.isEmpty()) ? apiKey : System.getenv("ZHIPU_API_KEY");
+        LlmSettingsService.ResolvedLlm config = llmSettingsService.resolve(
+                com.interview.assistant.security.TenantContext.tenantId());
+        String key = config.apiKey();
         if (key == null || key.isEmpty()) {
-            throw new IllegalStateException("智谱 API Key 未配置，无法解析图片");
+            throw new IllegalStateException("尚未配置大模型 API Key，无法解析图片简历");
         }
+        String visionModel = config.visionModel();
+        if (visionModel == null || visionModel.isBlank()) {
+            throw new IllegalStateException("当前模型不支持图片解析，请在「模型设置」里配置智谱视觉模型");
+        }
+        String visionUrl = (config.baseUrl() != null ? config.baseUrl().replaceAll("/+$", "") : "")
+                + "/chat/completions";
         try {
             String base64 = Base64.getEncoder().encodeToString(file.getBytes());
             String mime = file.getContentType();
@@ -106,7 +113,7 @@ public class ResumeParseService {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             ResponseEntity<String> resp = restTemplate.exchange(
-                ZHIPU_VISION_URL,
+                visionUrl,
                 HttpMethod.POST,
                 entity,
                 String.class

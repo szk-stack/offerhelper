@@ -12,7 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MockInterviewReportParserTest {
 
-    private final MockInterviewReportService service = new MockInterviewReportService(null, null, null, null);
+    private final MockInterviewReportService service =
+            new MockInterviewReportService(null, null, null, null, null);
 
     private static final String VALID = """
             {"overallScore": 78, "overallLevel": "B+", "overallComment": "ok",

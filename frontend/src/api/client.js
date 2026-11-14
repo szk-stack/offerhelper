@@ -82,6 +82,14 @@ export const api = {
       body: JSON.stringify({ oldPassword, newPassword }),
     }),
 
+  // 大模型配置
+  getLlmSettings: () => request('/settings/llm'),
+  saveLlmSettings: (config) =>
+    request('/settings/llm', { method: 'PUT', body: JSON.stringify(config) }),
+  resetLlmSettings: () => request('/settings/llm', { method: 'DELETE' }),
+  testLlmSettings: (config) =>
+    request('/settings/llm/test', { method: 'POST', body: JSON.stringify(config) }),
+
   // 面经
   getCompanies: () => request('/interviews/companies'),
   getDepartments: (company) => request(`/interviews/companies/${encodeURIComponent(company)}/departments`),

@@ -1,0 +1,245 @@
+/* 移动端适配：全局布局 + 各页面主要容器 */
+
+@media (max-width: 1024px) {
+  .main-content {
+    padding: 24px 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .main-content {
+    padding: 16px 12px;
+  }
+
+  /* 顶部导航：允许换行，链接横向滚动 */
+  .nav {
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .nav-brand a {
+    font-size: 15px;
+    gap: 6px;
+  }
+  .nav-logo {
+    height: 28px;
+  }
+  .nav-brand-text {
+    display: none;
+  }
+  .nav-right {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .nav-links {
+    flex: 1 1 auto;
+    order: 2;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    gap: 2px;
+    scrollbar-width: none;
+  }
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-links a {
+    padding: 6px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .nav-account {
+    order: 1;
+    padding-left: 0;
+    border-left: none;
+    gap: 6px;
+    margin-left: auto;
+  }
+  .nav-account-link {
+    max-width: 72px;
+    font-size: 12px;
+  }
+  .nav-logout {
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  /* 触屏输入：16px 避免 iOS 聚焦自动放大 */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* 模拟面试 */
+  .mock-interview-container {
+    padding: 0.75rem 0;
+  }
+  .setup-title-bar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .setup-form {
+    padding: 1.25rem;
+  }
+  .setup-form textarea {
+    min-height: 140px;
+  }
+  .room-container {
+    height: auto;
+    min-height: calc(100vh - 160px);
+  }
+  .room-header-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+  .room-header-top > div {
+    display: flex;
+    width: 100%;
+    gap: 0.5rem;
+  }
+  .room-header-top .btn {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .dialogue-panel {
+    min-height: 45vh;
+    padding: 0.75rem;
+  }
+  .message-bubble {
+    max-width: 92%;
+    padding: 0.75rem;
+    font-size: 14px;
+  }
+  .input-area {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .input-area textarea {
+    min-height: 64px;
+    width: 100%;
+  }
+  .input-area > div {
+    width: 100%;
+  }
+  .input-area .btn.primary {
+    flex: 1;
+  }
+  .report-container {
+    padding: 1.25rem;
+  }
+  .report-summary {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  .report-score-block {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.6rem;
+  }
+  .report-dimensions {
+    grid-template-columns: 1fr;
+  }
+  .question-detail {
+    padding: 0.85rem;
+  }
+  .question-detail-head {
+    flex-wrap: wrap;
+  }
+  .question-score {
+    margin-left: 0;
+  }
+  .history-header,
+  .replay-header {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+  .replay-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .history-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+  }
+  .history-card-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .replay-dialogue {
+    max-height: none;
+    padding: 1rem;
+  }
+  .session-panel {
+    padding: 1.25rem;
+  }
+  .session-panel-actions {
+    flex-direction: column;
+  }
+  .session-panel-actions .btn {
+    width: 100%;
+  }
+  .counts-config,
+  .mandatory-questions {
+    padding: 0.85rem;
+  }
+
+  /* 账号 / 设置 / 登录 */
+  .account-page,
+  .settings-page {
+    padding: 0.75rem 0;
+  }
+  .account-card,
+  .settings-card {
+    padding: 1.25rem;
+  }
+  .account-card form {
+    max-width: 100%;
+  }
+  .settings-row {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .login-page {
+    padding: 8vh 0.75rem 1.5rem;
+    align-items: flex-start;
+  }
+  .login-card {
+    padding: 1.5rem 1.25rem;
+  }
+
+  /* 表格类页面允许横向滚动 */
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-links a {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .nav-account-link {
+    max-width: 56px;
+  }
+  .login-brand h1 {
+    font-size: 1rem;
+  }
+  .report-score {
+    font-size: 2rem;
+  }
+}

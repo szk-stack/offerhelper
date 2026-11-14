@@ -1,12 +1,31 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { api } from '../../../api/client'
+import { getToken } from '../../../utils/authToken'
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+
+function parseSseBlock(block) {
+  let event = 'message'
+  const dataLines = []
+  for (const line of block.split('\n')) {
+    const clean = line.replace(/\r$/, '')
+    if (clean.startsWith('event:')) event = clean.slice(6).trim()
+    else if (clean.startsWith('data:')) dataLines.push(clean.slice(5).trim())
+  }
+  if (dataLines.length === 0) return null
+  const raw = dataLines.join('\n')
+  try {
+    return { event, data: JSON.parse(raw) }
+  } catch (e) {
+    return { event, data: { text: raw } }
+  }
+}
 
 export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [pendingMessages, setPendingMessages] = useState([])
+  const [streamText, setStreamText] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const scrollRef = useRef(null)
   const recognitionRef = useRef(null)
@@ -73,7 +92,7 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [allMessages])
+  }, [allMessages, streamText])
 
   // 当后端数据刷新后（onUpdate 触发），清除本地待确认消息
   useEffect(() => {
@@ -90,18 +109,76 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
     
     // 立刻在本地显示用户消息
     setPendingMessages([{ role: 'candidate', content: text, pending: true }])
+    setStreamText('')
     setLoading(true)
     
     try {
-      await api.answerMockInterview(session.sessionId, text)
-      // 触发外部重新拉取最新 session
-      onUpdate()
+      await streamAnswer(text)
+      await onUpdate()
     } catch (e) {
       alert('发送失败: ' + e.message)
       setInput(text)
       setPendingMessages([])
     } finally {
       setLoading(false)
+      setStreamText('')
+    }
+  }
+
+  /** 流式回答：边收边显示，结束后再刷新会话拿到落库的完整对话 */
+  const streamAnswer = async (text) => {
+    const token = getToken()
+    const res = await fetch(`/api/mock-interview/sessions/${session.sessionId}/answer/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ answer: text })
+    })
+
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`
+      try {
+        const body = await res.json()
+        msg = body.message || body.error || msg
+      } catch (e) { }
+      throw new Error(msg)
+    }
+
+    // 老浏览器不支持流式读取时退回同步接口
+    if (!res.body || !res.body.getReader) {
+      await api.answerMockInterview(session.sessionId, text)
+      return
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let full = ''
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      let index
+      while ((index = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, index)
+        buffer = buffer.slice(index + 2)
+        const evt = parseSseBlock(block)
+        if (!evt) continue
+
+        if (evt.event === 'chunk') {
+          full += evt.data?.text || ''
+          setStreamText(full)
+        } else if (evt.event === 'done') {
+          full = evt.data?.interviewerMessage || full
+          setStreamText(full)
+        } else if (evt.event === 'error') {
+          throw new Error(evt.data?.message || '生成失败')
+        }
+      }
     }
   }
 
@@ -160,7 +237,16 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
             <p style={{ whiteSpace: 'pre-wrap', marginTop: '0.5rem' }}>{d.content}</p>
           </div>
         ))}
-        {loading && <div className="message-bubble interviewer thinking">面试官正在思考...</div>}
+        {streamText && (
+          <div className="message-bubble interviewer streaming">
+            <strong>面试官: </strong>
+            <p style={{ whiteSpace: 'pre-wrap', marginTop: '0.5rem' }}>
+              {streamText}
+              <span className="stream-caret">▍</span>
+            </p>
+          </div>
+        )}
+        {loading && !streamText && <div className="message-bubble interviewer thinking">面试官正在思考...</div>}
       </div>
 
       <div className="input-area">
