@@ -170,12 +170,12 @@ cd frontend && npm install && npm run dev
 
 | 供应商 | Base URL | 对话模型 | 计划/报告模型 |
 |---|---|---|---|
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` | `deepseek-chat` |
+| DeepSeek | `https://api.deepseek.com` | `deepseek-flash` | `deepseek-flash` |
 | 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` | `glm-4-plus` |
 
 - 保存后立即生效，不需要重启；面试出题、追问、评估报告、AI 面试、智能助手都会使用该配置。
 - 不填则回落到 `application.yml` / 环境变量里的部署级默认模型。
-- 图片解析需要多模态模型（目前仅智谱 `glm-4v` 系列支持），DeepSeek 不支持图片输入。
+- 图片解析：DeepSeek `deepseek-flash`（V4.1 Flash）原生支持图片，智谱用 `glm-4v-plus`；在设置页「图片模型」里填写即可。
 - 面试对话采用 SSE 流式输出，首字返回后边生成边显示，底部有光标提示。
 
 ---

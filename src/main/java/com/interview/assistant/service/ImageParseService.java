@@ -16,7 +16,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 图片面经解析：上传图片，调用智谱 GLM-4V 视觉模型提取 实习经历、项目经历、八股、算法 等
+ * 图片面经解析：上传图片，调用多模态模型提取 实习经历、项目经历、八股、算法 等。
+ * DeepSeek deepseek-flash 与智谱 glm-4v 系列都支持图片输入。
  */
 @Service
 public class ImageParseService {
@@ -66,7 +67,8 @@ public class ImageParseService {
         }
         String visionModel = config.visionModel();
         if (visionModel == null || visionModel.isBlank()) {
-            throw new IllegalStateException("当前模型不支持图片解析，请在「模型设置」里配置智谱视觉模型");
+            throw new IllegalStateException(
+                    "当前配置没有可用的图片模型，请在「模型设置」填写支持图片的模型（如 deepseek-flash / glm-4v-plus）");
         }
         String visionUrl = (config.baseUrl() != null ? config.baseUrl().replaceAll("/+$", "") : "")
                 + "/chat/completions";
@@ -114,11 +116,11 @@ public class ImageParseService {
                         detail = err.get("error").toString();
                     }
                 } catch (Exception ignored) { detail = errBody != null ? errBody : ex.getMessage(); }
-                throw new RuntimeException("智谱 API 调用失败: " + ex.getStatusCode() + (detail.isEmpty() ? "" : " " + detail));
+                throw new RuntimeException("模型 API 调用失败: " + ex.getStatusCode() + (detail.isEmpty() ? "" : " " + detail));
             }
 
             if (resp.getStatusCode().isError()) {
-                throw new RuntimeException("智谱 API 调用失败: " + resp.getStatusCode());
+                throw new RuntimeException("模型 API 调用失败: " + resp.getStatusCode());
             }
 
             JsonNode root = objectMapper.readTree(resp.getBody());

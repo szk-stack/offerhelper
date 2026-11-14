@@ -15,10 +15,11 @@ export default function Settings() {
   const [info, setInfo] = useState(null)
   const [form, setForm] = useState({
     provider: 'deepseek',
-    baseUrl: 'https://api.deepseek.com/v1',
+    baseUrl: 'https://api.deepseek.com',
     apiKey: '',
-    chatModel: 'deepseek-chat',
-    planModel: 'deepseek-chat'
+    chatModel: 'deepseek-flash',
+    planModel: 'deepseek-flash',
+    visionModel: 'deepseek-flash'
   })
   const [message, setMessage] = useState(null) // {ok, text}
 
@@ -29,7 +30,8 @@ export default function Settings() {
       baseUrl: data.baseUrl || prev.baseUrl,
       apiKey: keepKey ? '' : prev.apiKey,
       chatModel: data.chatModel || prev.chatModel,
-      planModel: data.planModel || prev.planModel
+      planModel: data.planModel || prev.planModel,
+      visionModel: data.visionModel || prev.visionModel
     }))
   }
 
@@ -47,7 +49,8 @@ export default function Settings() {
       provider,
       baseUrl: preset.baseUrl || (provider === 'custom' ? '' : prev.baseUrl),
       chatModel: preset.chatModel || '',
-      planModel: preset.planModel || preset.chatModel || ''
+      planModel: preset.planModel || preset.chatModel || '',
+      visionModel: preset.visionModel || preset.chatModel || ''
     }))
   }
 
@@ -56,7 +59,8 @@ export default function Settings() {
       provider: form.provider,
       baseUrl: form.baseUrl.trim(),
       chatModel: form.chatModel.trim(),
-      planModel: form.planModel.trim()
+      planModel: form.planModel.trim(),
+      visionModel: form.visionModel.trim()
     }
     if (form.apiKey.trim()) body.apiKey = form.apiKey.trim()
     return body
@@ -110,8 +114,8 @@ export default function Settings() {
       <div className="settings-card">
         <h2>大模型设置</h2>
         <p className="settings-hint">
-          支持 DeepSeek 与智谱（都兼容 OpenAI 接口）。填自己的 Key 后，面试出题、追问、报告都会用你的模型；
-          不填则使用部署方配置的默认模型。
+          支持 DeepSeek（deepseek-flash，原生支持图片）与智谱（OpenAI 兼容接口）。填自己的 Key 后，
+          面试出题、追问、报告、图片解析都会用你的模型；不填则使用部署方配置的默认模型。
         </p>
 
         <div className="settings-status">
@@ -142,10 +146,10 @@ export default function Settings() {
             <input
               value={form.baseUrl}
               onChange={e => setForm({ ...form, baseUrl: e.target.value })}
-              placeholder="https://api.deepseek.com/v1"
+              placeholder="https://api.deepseek.com"
               required
             />
-            <span className="settings-field-hint">DeepSeek 填 https://api.deepseek.com/v1，智谱填 https://open.bigmodel.cn/api/paas/v4</span>
+            <span className="settings-field-hint">DeepSeek 填 https://api.deepseek.com（也兼容 /v1），智谱填 https://open.bigmodel.cn/api/paas/v4</span>
           </label>
 
           <label>
@@ -165,7 +169,7 @@ export default function Settings() {
               <input
                 value={form.chatModel}
                 onChange={e => setForm({ ...form, chatModel: e.target.value })}
-                placeholder="deepseek-chat"
+                placeholder="deepseek-flash"
                 required
               />
             </label>
@@ -174,11 +178,23 @@ export default function Settings() {
               <input
                 value={form.planModel}
                 onChange={e => setForm({ ...form, planModel: e.target.value })}
-                placeholder="deepseek-chat"
+                placeholder="deepseek-flash"
                 required
               />
             </label>
           </div>
+
+          <label>
+            图片模型（可选）
+            <input
+              value={form.visionModel}
+              onChange={e => setForm({ ...form, visionModel: e.target.value })}
+              placeholder="deepseek-flash"
+            />
+            <span className="settings-field-hint">
+              用于面经截图、图片简历解析。DeepSeek 的 deepseek-flash 与智谱 glm-4v 系列都支持图片，留空则用对话模型。
+            </span>
+          </label>
 
           <div className="settings-actions">
             <button type="submit" className="settings-primary" disabled={saving}>

@@ -24,7 +24,7 @@ public class LlmSettingsService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmSettingsService.class);
     public static final String ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
-    public static final String DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
+    public static final String DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
     /** API Key 的占位符：前端提交它表示「清除已保存的 Key」 */
     public static final String CLEAR_KEY = "__CLEAR__";
@@ -79,7 +79,8 @@ public class LlmSettingsService {
     }
 
     private static final Map<String, ProviderDefaults> PROVIDERS = Map.of(
-            "deepseek", new ProviderDefaults(DEEPSEEK_BASE_URL, "deepseek-chat", "deepseek-chat", null),
+            // deepseek-flash = DeepSeek-V4.1-Flash，原生多模态，图片和文本共用同一个模型
+            "deepseek", new ProviderDefaults(DEEPSEEK_BASE_URL, "deepseek-flash", "deepseek-flash", "deepseek-flash"),
             "zhipu", new ProviderDefaults(ZHIPU_BASE_URL, "glm-4-flash", "glm-4-plus", "glm-4v-plus"),
             "custom", new ProviderDefaults("", "", "", null)
     );
@@ -119,7 +120,7 @@ public class LlmSettingsService {
         String provider = s.getProvider() != null ? s.getProvider() : "custom";
         ProviderDefaults d = PROVIDERS.getOrDefault(provider, PROVIDERS.get("custom"));
         String baseUrl = blankTo(s.getBaseUrl(), d.baseUrl());
-        String chat = blankTo(s.getChatModel(), blankTo(d.chatModel(), "deepseek-chat"));
+        String chat = blankTo(s.getChatModel(), blankTo(d.chatModel(), "deepseek-flash"));
         String plan = blankTo(s.getPlanModel(), chat);
         String vision = blankTo(s.getVisionModel(), d.visionModel());
         return new ResolvedLlm(provider, baseUrl, s.getApiKey(), chat, plan, vision);
@@ -142,8 +143,10 @@ public class LlmSettingsService {
         result.put("apiKeyMasked", hasOwnKey ? mask(saved.getApiKey()) : "");
         result.put("providers", supportedProviders());
         result.put("presets", Map.of(
-                "deepseek", Map.of("baseUrl", DEEPSEEK_BASE_URL, "chatModel", "deepseek-chat", "planModel", "deepseek-chat"),
-                "zhipu", Map.of("baseUrl", ZHIPU_BASE_URL, "chatModel", "glm-4-flash", "planModel", "glm-4-plus", "visionModel", "glm-4v-plus")
+                "deepseek", Map.of("baseUrl", DEEPSEEK_BASE_URL, "chatModel", "deepseek-flash",
+                        "planModel", "deepseek-flash", "visionModel", "deepseek-flash"),
+                "zhipu", Map.of("baseUrl", ZHIPU_BASE_URL, "chatModel", "glm-4-flash",
+                        "planModel", "glm-4-plus", "visionModel", "glm-4v-plus")
         ));
         result.put("effectiveProvider", effective.provider());
         result.put("effectiveModel", effective.modelFor(LlmPurpose.CHAT));
