@@ -32,6 +32,11 @@ public class MockInterviewSession {
     @JsonView(Views.List.class)
     private String sessionId;
 
+    /** 所属租户（数据隔离依据） */
+    @Column(name = "tenant_id")
+    @JsonView(Views.List.class)
+    private Long tenantId;
+
     /** 目标公司 */
     @JsonView(Views.List.class)
     private String company;
@@ -146,6 +151,8 @@ public class MockInterviewSession {
     public void setId(Long id) { this.id = id; }
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
     public String getCompany() { return company; }
     public void setCompany(String company) { this.company = company; }
     public String getDepartment() { return department; }

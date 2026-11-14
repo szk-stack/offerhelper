@@ -6,6 +6,7 @@ import com.interview.assistant.entity.ToolChatSession;
 import com.interview.assistant.repository.AlgorithmQuestionRepository;
 import com.interview.assistant.repository.ToolChatMessageRepository;
 import com.interview.assistant.repository.ToolChatSessionRepository;
+import com.interview.assistant.security.TenantContext;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.mcp.McpToolProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -150,6 +151,7 @@ public class InterviewAgentWithToolsService {
         String sessionId = "tool_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         ToolChatSession session = new ToolChatSession();
         session.setSessionId(sessionId);
+        session.setTenantId(TenantContext.requireTenantId());
         session.setTitle("新对话");
         toolSessionRepository.save(session);
         log.info("✅ 创建智能助手会话: {}", sessionId);
@@ -162,8 +164,10 @@ public class InterviewAgentWithToolsService {
             return "请输入您的问题。";
         }
 
-        // 确保会话存在
+        // 确保会话存在且属于当前租户
+        Long tenantId = TenantContext.requireTenantId();
         ToolChatSession dbSession = toolSessionRepository.findBySessionId(sessionId)
+                .filter(s -> tenantId.equals(s.getTenantId()))
                 .orElseThrow(() -> new IllegalArgumentException("会话不存在: " + sessionId));
 
         // 获取或恢复内存中的记忆
@@ -226,15 +230,17 @@ public class InterviewAgentWithToolsService {
         return result;
     }
 
-    /** 获取所有会话列表（不含消息） */
+    /** 获取当前租户的会话列表（不含消息） */
     public List<ToolChatSession> listSessions() {
-        return toolSessionRepository.findAllByOrderByUpdatedAtDesc();
+        return toolSessionRepository.findAllByTenantIdOrderByUpdatedAtDesc(TenantContext.requireTenantId());
     }
 
     /** 获取单个会话详情（含消息） */
     @Transactional(readOnly = true)
     public ToolChatSession getSession(Long id) {
+        Long tenantId = TenantContext.requireTenantId();
         return toolSessionRepository.findById(id)
+                .filter(s -> tenantId.equals(s.getTenantId()))
                 .map(s -> {
                     s.getMessages().size();
                     return s;
@@ -244,11 +250,14 @@ public class InterviewAgentWithToolsService {
 
     /** 删除会话 */
     public void deleteSession(Long id) {
-        toolSessionRepository.findById(id).ifPresent(s -> {
-            sessionMemories.remove(s.getSessionId());
-            toolSessionRepository.delete(s);
-            log.info("🗑️ 删除智能助手会话: {}", s.getSessionId());
-        });
+        Long tenantId = TenantContext.requireTenantId();
+        toolSessionRepository.findById(id)
+                .filter(s -> tenantId.equals(s.getTenantId()))
+                .ifPresent(s -> {
+                    sessionMemories.remove(s.getSessionId());
+                    toolSessionRepository.delete(s);
+                    log.info("🗑️ 删除智能助手会话: {}", s.getSessionId());
+                });
     }
 
     // ==================== 仅处理「查询算法题」的逻辑，不涉及查面经/运行代码 ====================

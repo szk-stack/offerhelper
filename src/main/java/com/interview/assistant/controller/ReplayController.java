@@ -2,6 +2,7 @@ package com.interview.assistant.controller;
 
 import com.interview.assistant.entity.UserInterviewRecord;
 import com.interview.assistant.repository.UserInterviewRecordRepository;
+import com.interview.assistant.security.TenantContext;
 import com.interview.assistant.service.InterviewAgentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -44,17 +45,19 @@ public class ReplayController {
 
     /** 保存面经：传 id 则更新已有记录（同一面经多次修改只占一条），否则新建 */
     @PostMapping("/save")
-    public ResponseEntity<UserInterviewRecord> save(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<?> save(@RequestBody Map<String, Object> request) {
+        Long tenantId = TenantContext.requireTenantId();
         UserInterviewRecord record;
         Object idObj = request.get("id");
         if (idObj != null) {
             Long id = idObj instanceof Number ? ((Number) idObj).longValue() : Long.parseLong(String.valueOf(idObj));
-            record = recordRepository.findById(id).orElse(null);
+            record = recordRepository.findByIdAndTenantId(id, tenantId).orElse(null);
+            if (record == null) {
+                return ResponseEntity.notFound().build();
+            }
         } else {
-            record = null;
-        }
-        if (record == null) {
             record = new UserInterviewRecord();
+            record.setTenantId(tenantId);
         }
         record.setCompany((String) request.get("company"));
         record.setDepartment((String) request.get("department"));
@@ -66,12 +69,16 @@ public class ReplayController {
 
     @GetMapping("/records")
     public ResponseEntity<List<UserInterviewRecord>> list() {
-        return ResponseEntity.ok(recordRepository.findAll());
+        return ResponseEntity.ok(recordRepository.findAllByTenantIdOrderByCreatedAtDesc(TenantContext.requireTenantId()));
     }
 
     @DeleteMapping("/records/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        recordRepository.deleteById(id);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        return recordRepository.findByIdAndTenantId(id, TenantContext.requireTenantId())
+                .map(r -> {
+                    recordRepository.delete(r);
+                    return ResponseEntity.ok().build();
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 }

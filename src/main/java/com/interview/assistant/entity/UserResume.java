@@ -12,6 +12,10 @@ public class UserResume {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** 所属租户 */
+    @Column(name = "tenant_id")
+    private Long tenantId;
+
     @Column(nullable = false)
     private String name = "默认简历";
 
@@ -34,6 +38,8 @@ public class UserResume {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getContent() { return content; }

@@ -20,6 +20,10 @@ public class InterviewChatSession {
     @JsonView(Views.List.class)
     private String sessionId;
 
+    /** 所属租户 */
+    @Column(name = "tenant_id")
+    private Long tenantId;
+
     @Column(columnDefinition = "TEXT")
     @JsonView(Views.List.class)
     private String questions;
@@ -54,6 +58,8 @@ public class InterviewChatSession {
     public void setId(Long id) { this.id = id; }
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
     public String getQuestions() { return questions; }
     public void setQuestions(String questions) { this.questions = questions; }
     public String getResume() { return resume; }

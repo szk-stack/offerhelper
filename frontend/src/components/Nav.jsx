@@ -1,5 +1,6 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, Link, useNavigate } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
+import { useAuth } from '../context/AuthContext'
 import './Nav.css'
 
 const navItems = [
@@ -14,6 +15,14 @@ const navItems = [
 
 export default function Nav() {
   const { theme, toggleTheme } = useTheme()
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <nav className="nav">
       <div className="nav-brand">
@@ -40,6 +49,14 @@ export default function Nav() {
             </li>
           ))}
         </ul>
+        {user && (
+          <div className="nav-account">
+            <Link to="/account" className="nav-account-link" title="账号设置">
+              {user.displayName || user.username}
+            </Link>
+            <button className="nav-logout" onClick={handleLogout}>退出</button>
+          </div>
+        )}
       </div>
     </nav>
   )

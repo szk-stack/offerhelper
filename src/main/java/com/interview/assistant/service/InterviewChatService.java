@@ -2,8 +2,10 @@ package com.interview.assistant.service;
 
 import com.interview.assistant.entity.InterviewChatMessage;
 import com.interview.assistant.entity.InterviewChatSession;
+import com.interview.assistant.exception.NotFoundException;
 import com.interview.assistant.repository.InterviewChatMessageRepository;
 import com.interview.assistant.repository.InterviewChatSessionRepository;
+import com.interview.assistant.security.TenantContext;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -69,6 +71,8 @@ public class InterviewChatService {
         if (userMessage == null || userMessage.isBlank()) {
             throw new IllegalArgumentException("userMessage 不能为空");
         }
+        // 防止用别人的 sessionId 往他人会话里写消息
+        assertOwnership(sessionId);
 
         InterviewSession session = sessions.computeIfAbsent(sessionId, id -> {
             StringBuilder system = new StringBuilder(SYSTEM_PROMPT);
@@ -114,6 +118,7 @@ public class InterviewChatService {
         InterviewChatSession dbSession = sessionRepository.findBySessionId(sessionId).orElseGet(() -> {
             InterviewChatSession s = new InterviewChatSession();
             s.setSessionId(sessionId);
+            s.setTenantId(TenantContext.requireTenantId());
             s.setQuestions(questions);
             s.setResume(resume != null && resume.length() > 5000 ? resume.substring(0, 5000) + "..." : resume);
             s.setCompany(company);
@@ -138,9 +143,11 @@ public class InterviewChatService {
     }
 
     public void endSession(String sessionId, String questions, String resume, String company, String department) {
+        assertOwnership(sessionId);
         InterviewChatSession dbSession = sessionRepository.findBySessionId(sessionId).orElseGet(() -> {
             InterviewChatSession s = new InterviewChatSession();
             s.setSessionId(sessionId);
+            s.setTenantId(TenantContext.requireTenantId());
             s.setQuestions(questions);
             s.setResume(resume != null && resume.length() > 5000 ? resume.substring(0, 5000) + "..." : resume);
             s.setCompany(company);
@@ -153,22 +160,30 @@ public class InterviewChatService {
     }
 
     public void deleteSession(String sessionId) {
-        sessionRepository.findBySessionId(sessionId).ifPresent(s -> {
-            sessions.remove(sessionId);
-            sessionRepository.delete(s);
-        });
+        Long tenantId = TenantContext.requireTenantId();
+        sessionRepository.findBySessionId(sessionId)
+                .filter(s -> tenantId.equals(s.getTenantId()))
+                .ifPresent(s -> {
+                    sessions.remove(sessionId);
+                    sessionRepository.delete(s);
+                });
     }
 
     public void deleteSessionById(Long id) {
-        sessionRepository.findById(id).ifPresent(s -> {
-            sessions.remove(s.getSessionId());
-            sessionRepository.delete(s);
-        });
+        Long tenantId = TenantContext.requireTenantId();
+        sessionRepository.findById(id)
+                .filter(s -> tenantId.equals(s.getTenantId()))
+                .ifPresent(s -> {
+                    sessions.remove(s.getSessionId());
+                    sessionRepository.delete(s);
+                });
     }
 
     @Transactional(readOnly = true)
     public InterviewChatSession getSessionById(Long id) {
+        Long tenantId = TenantContext.requireTenantId();
         return sessionRepository.findById(id)
+                .filter(s -> tenantId.equals(s.getTenantId()))
                 .map(s -> {
                     s.getMessages().size();
                     return s;
@@ -177,12 +192,14 @@ public class InterviewChatService {
     }
 
     public List<InterviewChatSession> listSessions() {
-        return sessionRepository.findAllByOrderByCreatedAtDesc();
+        return sessionRepository.findAllByTenantIdOrderByCreatedAtDesc(TenantContext.requireTenantId());
     }
 
     @Transactional(readOnly = true)
     public InterviewChatSession getSession(String sessionId) {
+        Long tenantId = TenantContext.requireTenantId();
         return sessionRepository.findBySessionId(sessionId)
+                .filter(s -> tenantId.equals(s.getTenantId()))
                 .map(s -> {
                     s.getMessages().size(); // 触发懒加载
                     return s;
@@ -190,8 +207,19 @@ public class InterviewChatService {
                 .orElse(null);
     }
 
-    private static class InterviewSession {
-        final String systemContext;
+    /**
+     * 会话存在但不属于当前租户时按「不存在」处理，避免越权写入。
+     */
+    private void assertOwnership(String sessionId) {
+        Long tenantId = TenantContext.requireTenantId();
+        sessionRepository.findBySessionId(sessionId)
+                .filter(s -> !tenantId.equals(s.getTenantId()))
+                .ifPresent(s -> {
+                    throw new NotFoundException("会话不存在: " + sessionId);
+                });
+    }
+
+    private static class InterviewSession {        final String systemContext;
         final MessageWindowChatMemory memory;
 
         InterviewSession(String systemContext) {

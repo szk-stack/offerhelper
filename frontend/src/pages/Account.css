@@ -1,0 +1,93 @@
+.account-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.account-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+.account-card h2,
+.account-card h3 {
+  margin: 0 0 1rem;
+  font-size: 1.05rem;
+}
+
+.account-meta {
+  display: grid;
+  gap: 0.75rem;
+}
+.account-meta div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.account-meta div:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.account-meta span {
+  color: var(--text-secondary);
+}
+
+.account-hint {
+  margin: 0 0 1rem;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.account-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 360px;
+}
+.account-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.account-submit {
+  align-self: flex-start;
+  padding: 9px 22px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+}
+.account-submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.account-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.account-error,
+.account-success {
+  font-size: 13px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+.account-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+.account-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+  border: 1px solid var(--success);
+}

@@ -32,6 +32,10 @@ public class ToolChatSession {
     @JsonView(Views.List.class)
     private String sessionId;
 
+    /** 所属租户 */
+    @Column(name = "tenant_id")
+    private Long tenantId;
+
     /** 会话标题（取首条用户消息前 30 字） */
     @JsonView(Views.List.class)
     private String title;
@@ -62,6 +66,14 @@ public class ToolChatSession {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
+    }
+
+    public Long getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(Long tenantId) {
+        this.tenantId = tenantId;
     }
 
     public String getTitle() {

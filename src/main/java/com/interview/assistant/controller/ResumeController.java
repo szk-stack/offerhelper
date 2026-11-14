@@ -2,6 +2,7 @@ package com.interview.assistant.controller;
 
 import com.interview.assistant.entity.UserResume;
 import com.interview.assistant.repository.UserResumeRepository;
+import com.interview.assistant.security.TenantContext;
 import com.interview.assistant.service.ResumeParseService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -60,6 +61,7 @@ public class ResumeController {
             if (contentType == null) contentType = "application/pdf";
 
             UserResume resume = new UserResume();
+            resume.setTenantId(TenantContext.requireTenantId());
             resume.setName(name);
             resume.setFileName(name);
             resume.setContent(content);
@@ -77,7 +79,7 @@ public class ResumeController {
     /** 下载简历文件 */
     @GetMapping("/{id}/download")
     public ResponseEntity<byte[]> download(@PathVariable Long id) {
-        return resumeRepository.findById(id)
+        return resumeRepository.findByIdAndTenantId(id, TenantContext.requireTenantId())
                 .filter(r -> r.getFileData() != null && r.getFileData().length > 0)
                 .map(r -> {
                     String name = r.getFileName() != null ? r.getFileName() : "resume.pdf";
@@ -93,7 +95,7 @@ public class ResumeController {
     /** 预览简历（浏览器内嵌打开） */
     @GetMapping("/{id}/preview")
     public ResponseEntity<byte[]> preview(@PathVariable Long id) {
-        return resumeRepository.findById(id)
+        return resumeRepository.findByIdAndTenantId(id, TenantContext.requireTenantId())
                 .filter(r -> r.getFileData() != null && r.getFileData().length > 0)
                 .map(r -> ResponseEntity.ok()
                         .contentType(MediaType.parseMediaType(r.getContentType() != null ? r.getContentType() : "application/pdf"))
@@ -104,14 +106,14 @@ public class ResumeController {
 
     @GetMapping
     public ResponseEntity<List<UserResume>> list() {
-        var list = resumeRepository.findAll();
+        var list = resumeRepository.findAllByTenantIdOrderByCreatedAtDesc(TenantContext.requireTenantId());
         list.forEach(r -> r.setFileData(null));
         return ResponseEntity.ok(list);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<UserResume> getById(@PathVariable Long id) {
-        return resumeRepository.findById(id)
+        return resumeRepository.findByIdAndTenantId(id, TenantContext.requireTenantId())
                 .map(r -> {
                     r.setFileData(null);
                     return ResponseEntity.ok(r);
@@ -120,8 +122,12 @@ public class ResumeController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        resumeRepository.deleteById(id);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        return resumeRepository.findByIdAndTenantId(id, TenantContext.requireTenantId())
+                .map(r -> {
+                    resumeRepository.delete(r);
+                    return ResponseEntity.ok().build();
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 }

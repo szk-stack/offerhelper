@@ -4,7 +4,6 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -12,15 +11,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * 简单密码保护：对 POST/PUT/DELETE/PATCH 请求要求 X-Admin-Password 与配置一致。
- * 若 app.admin-password 未配置或为空，则不校验（方便本地开发）。
+ * 历史上用于「部署级管理员密码」，现在接口鉴权已由多租户登录（Bearer 令牌）接管。
+ * 这里只保留 /api 的 CORS 预检处理，避免旧前端带 X-Admin-Password 时预检失败。
  */
 @Component
 @Order(1)
 public class AdminPasswordFilter extends OncePerRequestFilter {
-
-    @Value("${app.admin-password:}")
-    private String adminPassword;
 
     private void addCorsHeaders(HttpServletRequest request, HttpServletResponse response) {
         String origin = request.getHeader("Origin");
@@ -39,34 +35,12 @@ public class AdminPasswordFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             return;
         }
-        // 预检请求直接放行并返回 CORS 头，确保带 X-Admin-Password 的请求能通过
+        // 多租户登录鉴权已取代部署级管理员密码，这里只保留 CORS 预检处理
         if ("OPTIONS".equalsIgnoreCase(method)) {
             addCorsHeaders(request, response);
             response.setStatus(HttpServletResponse.SC_OK);
             return;
         }
-        if (adminPassword == null || adminPassword.isBlank()) {
-            chain.doFilter(request, response);
-            return;
-        }
-        // 简历相关接口（含 GET 列表/详情/下载/预览）均需管理员密码，防止他人查看或下载
-        boolean isResumeApi = path.startsWith("/api/resumes");
-        boolean isModify = "POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)
-                || "DELETE".equalsIgnoreCase(method) || "PATCH".equalsIgnoreCase(method);
-        if (!isModify && !isResumeApi) {
-            chain.doFilter(request, response);
-            return;
-        }
-        String header = request.getHeader("X-Admin-Password");
-        String expected = adminPassword != null ? adminPassword.trim() : "";
-        String actual = header != null ? header.trim() : "";
-        if (!expected.isEmpty() && expected.equals(actual)) {
-            chain.doFilter(request, response);
-            return;
-        }
-        addCorsHeaders(request, response);
-        response.setStatus(403);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"error\":\"需要管理员密码\"}");
+        chain.doFilter(request, response);
     }
 }

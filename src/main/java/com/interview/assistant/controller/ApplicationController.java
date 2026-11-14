@@ -2,6 +2,7 @@ package com.interview.assistant.controller;
 
 import com.interview.assistant.entity.ApplicationRecord;
 import com.interview.assistant.repository.ApplicationRecordRepository;
+import com.interview.assistant.security.TenantContext;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +23,7 @@ public class ApplicationController {
 
     @GetMapping
     public ResponseEntity<List<ApplicationRecord>> list() {
-        return ResponseEntity.ok(repository.findAllByOrderByAppliedAtDesc());
+        return ResponseEntity.ok(repository.findAllByTenantIdOrderByAppliedAtDesc(TenantContext.requireTenantId()));
     }
 
     @PostMapping
@@ -33,6 +34,7 @@ public class ApplicationController {
             return ResponseEntity.badRequest().body(Map.of("error", "投递公司和投递进度不能为空"));
         }
         ApplicationRecord r = new ApplicationRecord();
+        r.setTenantId(TenantContext.requireTenantId());
         r.setCompany(company);
         r.setAppliedAt(getDate(body, "appliedAt"));
         r.setStatus(status);
@@ -44,7 +46,7 @@ public class ApplicationController {
 
     @PutMapping("/{id}")
     public ResponseEntity<ApplicationRecord> update(@PathVariable Long id, @RequestBody Map<String, Object> body) {
-        return repository.findById(id)
+        return repository.findByIdAndTenantId(id, TenantContext.requireTenantId())
                 .map(r -> {
                     if (body.containsKey("company")) r.setCompany(getString(body, "company"));
                     if (body.containsKey("appliedAt")) r.setAppliedAt(getDate(body, "appliedAt"));
@@ -57,9 +59,13 @@ public class ApplicationController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        repository.deleteById(id);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        return repository.findByIdAndTenantId(id, TenantContext.requireTenantId())
+                .map(r -> {
+                    repository.delete(r);
+                    return ResponseEntity.ok().build();
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     private static String getString(Map<String, Object> body, String key) {

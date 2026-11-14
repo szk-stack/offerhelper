@@ -12,6 +12,10 @@ public class UserInterviewRecord {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** 所属租户 */
+    @Column(name = "tenant_id")
+    private Long tenantId;
+
     private String company;
     private String department;
     private String position;
@@ -23,6 +27,8 @@ public class UserInterviewRecord {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
     public String getCompany() { return company; }
     public void setCompany(String company) { this.company = company; }
     public String getDepartment() { return department; }

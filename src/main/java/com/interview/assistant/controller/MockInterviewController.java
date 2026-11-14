@@ -2,9 +2,12 @@ package com.interview.assistant.controller;
 
 import com.fasterxml.jackson.annotation.JsonView;
 import com.interview.assistant.entity.MockInterviewSession;
+import com.interview.assistant.exception.NotFoundException;
+import com.interview.assistant.security.AuthException;
 import com.interview.assistant.service.MockInterviewService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -60,7 +63,7 @@ public class MockInterviewController {
             ));
         } catch (Exception e) {
             log.error("创建模拟面试会话失败", e);
-            return ResponseEntity.status(500).body(Map.of("error", "创建会话失败: " + e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -79,7 +82,7 @@ public class MockInterviewController {
             ));
         } catch (Exception e) {
             log.error("生成面试计划失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -93,7 +96,7 @@ public class MockInterviewController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("开始面试失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -111,7 +114,7 @@ public class MockInterviewController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("回答处理失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -125,7 +128,7 @@ public class MockInterviewController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("结束面试失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -138,7 +141,7 @@ public class MockInterviewController {
             return ResponseEntity.ok(mockInterviewService.pauseInterview(sessionId));
         } catch (Exception e) {
             log.error("暂停面试失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -151,7 +154,7 @@ public class MockInterviewController {
             return ResponseEntity.ok(mockInterviewService.resumeInterview(sessionId));
         } catch (Exception e) {
             log.error("继续面试失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -164,7 +167,7 @@ public class MockInterviewController {
             return ResponseEntity.ok(mockInterviewService.abortInterview(sessionId));
         } catch (Exception e) {
             log.error("放弃面试失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -177,7 +180,7 @@ public class MockInterviewController {
             return ResponseEntity.ok(mockInterviewService.regenerateReport(sessionId));
         } catch (Exception e) {
             log.error("重新生成报告失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -191,7 +194,7 @@ public class MockInterviewController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("获取进度失败, sessionId={}", sessionId, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
     }
 
@@ -236,7 +239,27 @@ public class MockInterviewController {
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             log.error("删除会话失败, id={}", id, e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+            return errorResponse(e);
         }
+    }
+
+    /**
+     * 把业务异常映射成正确的 HTTP 状态，前端才能区分「没登录 / 不存在 / 状态不对」。
+     */
+    private ResponseEntity<?> errorResponse(Exception e) {
+        String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        if (e instanceof AuthException) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", message));
+        }
+        if (e instanceof NotFoundException) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", message));
+        }
+        if (e instanceof IllegalStateException) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", message));
+        }
+        if (e instanceof IllegalArgumentException) {
+            return ResponseEntity.badRequest().body(Map.of("error", message));
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", message));
     }
 }

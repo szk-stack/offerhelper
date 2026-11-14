@@ -2,21 +2,29 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 import { getPassword, getPasswordAsync, clearPassword, setPassword } from '../utils/adminAuth'
+import { getToken, clearToken, notifyAuthChanged } from '../utils/authToken'
+
+function withAuthHeaders(options, isModify, password) {
+  const headers = { ...(options.headers || {}) }
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (isModify && password) headers['X-Admin-Password'] = password
+  return { ...options, headers }
+}
 
 async function doFetch(url, options, isModify) {
-  let reqOpts = options
-  if (isModify) {
-    const p = getPassword()
-    if (p) reqOpts = { ...options, headers: { ...(options.headers || {}), 'X-Admin-Password': p } }
+  let res = await fetch(url, withAuthHeaders(options, isModify, getPassword()))
+  if (res.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/register')) {
+    clearToken()
+    notifyAuthChanged()
+    throw new Error('登录已过期，请重新登录')
   }
-  let res = await fetch(url, reqOpts)
   if (isModify && res.status === 403) {
     clearPassword()
     const p = await getPasswordAsync()
     if (!p) throw new Error('需要管理员密码')
     // 重试时使用新对象并显式带上密码头，避免部分环境未正确发送自定义 header
-    const retryOpts = { ...options, headers: { ...(options.headers || {}), 'X-Admin-Password': p } }
-    res = await fetch(url, retryOpts)
+    res = await fetch(url, withAuthHeaders(options, isModify, p))
     if (res.status === 403) {
       clearPassword()
       throw new Error('密码错误，请重试')
@@ -55,6 +63,25 @@ async function request(path, options = {}, requireAuth = false) {
 }
 
 export const api = {
+  // 账号
+  register: (username, password, displayName) =>
+    request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, displayName }),
+    }),
+  login: (username, password) =>
+    request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  me: () => request('/auth/me'),
+  changePassword: (oldPassword, newPassword) =>
+    request('/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword }),
+    }),
+
   // 面经
   getCompanies: () => request('/interviews/companies'),
   getDepartments: (company) => request(`/interviews/companies/${encodeURIComponent(company)}/departments`),

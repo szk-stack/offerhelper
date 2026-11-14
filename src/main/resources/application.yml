@@ -55,6 +55,10 @@ zhipu:
 app:
   admin-password: "${APP_ADMIN_PASSWORD:}"
   base-url: ""
+  # 多租户账号体系：令牌有效期；历史数据迁移时的默认账号密码（不填则随机生成并打印到日志）
+  auth:
+    token-days: 30
+    bootstrap-password: "${APP_BOOTSTRAP_PASSWORD:}"
   # 模拟面试：超过多少小时没有新发言，自动把 IN_PROGRESS 会话标记为 ABORTED
   mock-interview:
     stale-hours: 12

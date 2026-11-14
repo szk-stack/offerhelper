@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.interview.assistant.entity.*;
+import com.interview.assistant.exception.NotFoundException;
 import com.interview.assistant.repository.*;
+import com.interview.assistant.security.TenantContext;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -79,6 +81,7 @@ public class MockInterviewService {
                                                String interviewConfig) {
         MockInterviewSession session = new MockInterviewSession();
         session.setSessionId(UUID.randomUUID().toString());
+        session.setTenantId(TenantContext.requireTenantId());
         session.setCompany(company);
         session.setDepartment(department);
         session.setResumeSnapshot(resumeText);
@@ -453,7 +456,8 @@ public class MockInterviewService {
     // ========================== 查询接口 ==========================
 
     public List<MockInterviewSession> listSessions() {
-        List<MockInterviewSession> sessions = sessionRepo.findAllByOrderByCreatedAtDesc();
+        List<MockInterviewSession> sessions =
+                sessionRepo.findAllByTenantIdOrderByCreatedAtDesc(TenantContext.requireTenantId());
         if (sessions.isEmpty()) {
             return sessions;
         }
@@ -489,29 +493,37 @@ public class MockInterviewService {
 
     @Transactional(readOnly = true)
     public MockInterviewSession getSessionDetail(String sessionId) {
-        return sessionRepo.findBySessionId(sessionId).map(s -> {
-            s.getDialogues().size(); // 触发懒加载
-            if (s.getPlan() != null) s.getPlan().getPlanJson();
-            if (s.getReport() != null) s.getReport().getReportJson();
-            return s;
-        }).orElse(null);
+        return sessionRepo.findBySessionId(sessionId)
+                .filter(s -> TenantContext.requireTenantId().equals(s.getTenantId()))
+                .map(s -> {
+                    s.getDialogues().size(); // 触发懒加载
+                    if (s.getPlan() != null) s.getPlan().getPlanJson();
+                    if (s.getReport() != null) s.getReport().getReportJson();
+                    return s;
+                }).orElse(null);
     }
 
     @Transactional(readOnly = true)
     public MockInterviewSession getSessionDetailById(Long id) {
-        return sessionRepo.findById(id).map(s -> {
-            s.getDialogues().size();
-            if (s.getPlan() != null) s.getPlan().getPlanJson();
-            if (s.getReport() != null) s.getReport().getReportJson();
-            return s;
-        }).orElse(null);
+        Long tenantId = TenantContext.requireTenantId();
+        return sessionRepo.findById(id)
+                .filter(s -> tenantId.equals(s.getTenantId()))
+                .map(s -> {
+                    s.getDialogues().size();
+                    if (s.getPlan() != null) s.getPlan().getPlanJson();
+                    if (s.getReport() != null) s.getReport().getReportJson();
+                    return s;
+                }).orElse(null);
     }
 
     public void deleteSession(Long id) {
-        sessionRepo.findById(id).ifPresent(s -> {
-            contexts.remove(s.getSessionId());
-            sessionRepo.delete(s);
-        });
+        Long tenantId = TenantContext.requireTenantId();
+        sessionRepo.findById(id)
+                .filter(s -> tenantId.equals(s.getTenantId()))
+                .ifPresent(s -> {
+                    contexts.remove(s.getSessionId());
+                    sessionRepo.delete(s);
+                });
     }
 
     /**
@@ -534,8 +546,10 @@ public class MockInterviewService {
     // ========================== 内部方法 ==========================
 
     private MockInterviewSession getSessionOrThrow(String sessionId) {
+        Long tenantId = TenantContext.requireTenantId();
         return sessionRepo.findBySessionId(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("会话不存在: " + sessionId));
+                .filter(s -> tenantId.equals(s.getTenantId()))
+                .orElseThrow(() -> new NotFoundException("会话不存在: " + sessionId));
     }
 
     private boolean isDeepDivePhase(String phaseType) {

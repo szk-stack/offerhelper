@@ -14,6 +14,10 @@ public class ApplicationRecord {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** 所属租户 */
+    @Column(name = "tenant_id")
+    private Long tenantId;
+
     @Column(nullable = false)
     private String company;
 
@@ -30,6 +34,8 @@ public class ApplicationRecord {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
     public String getCompany() { return company; }
     public void setCompany(String company) { this.company = company; }
     public LocalDate getAppliedAt() { return appliedAt; }

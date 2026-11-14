@@ -3,6 +3,7 @@ package com.interview.assistant.controller;
 import com.interview.assistant.entity.InterviewChatSession;
 import com.interview.assistant.entity.InterviewExperience;
 import com.interview.assistant.entity.ToolChatSession;
+import com.interview.assistant.exception.NotFoundException;
 import com.interview.assistant.service.InterviewDataService;
 import com.interview.assistant.service.InterviewAgentService;
 import com.interview.assistant.service.InterviewAgentWithToolsService;
@@ -237,6 +238,8 @@ public class InterviewController {
         try {
             String result = interviewChatService.chat(sessionId, userMessage, questions, resume, company, department);
             return ResponseEntity.ok(Map.of("reply", InterviewAgentWithToolsService.finalFormatting(result)));
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             log.error("chatSession failed", e);
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "对话失败"));
@@ -257,6 +260,8 @@ public class InterviewController {
         try {
             interviewChatService.endSession(sessionId, questions, resume, company, department);
             return ResponseEntity.ok(Map.of("ok", true));
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             log.error("endChatSession failed", e);
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "结束失败"));
