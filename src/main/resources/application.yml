@@ -29,7 +29,8 @@ spring:
 
 # 智谱 GLM 配置：正式环境请通过环境变量 ZHIPU_API_KEY 或 application-local.yml 覆盖（本文件不要写死真实密钥）
 zhipu:
-  apiKey: 2d53fafd36cb43b995de50e903a15fdd.xX2a9XDSwPZ7Z44q
+  # 密钥只从环境变量或 application-local.yml（已 gitignore）读取，不要写死在本文件
+  apiKey: "${ZHIPU_API_KEY:}"
   # 主模型（对话、复盘等）: glm-4-flash, glm-4, glm-4.6v, glm-4.6v-flash 等
   model: glm-5.1
   # 深挖问题生成专用：更快模型提速
@@ -54,6 +55,15 @@ zhipu:
 app:
   admin-password: "${APP_ADMIN_PASSWORD:}"
   base-url: ""
+  # 模拟面试：超过多少小时没有新发言，自动把 IN_PROGRESS 会话标记为 ABORTED
+  mock-interview:
+    stale-hours: 12
+  # 可选：小红书 MCP 工具；脚本不存在或启动失败时只跳过工具，不影响应用启动
+  mcp:
+    enabled: true
+    xhs:
+      python: "python"
+      server-script: "D:/project/Spider_XHS-master/mcp_server.py"
   algorithm-search:
     enabled: false            # 默认关闭；需要联网搜索时，在本地 application-local.yml 打开并配置 api-key
     provider: "searchcans"    # searchcans / bing / serper，可在本地覆盖

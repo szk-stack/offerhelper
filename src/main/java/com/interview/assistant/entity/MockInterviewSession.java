@@ -90,6 +90,27 @@ public class MockInterviewSession {
     @JsonView(Views.List.class)
     private int estimatedDurationMinutes = 30;
 
+    /**
+     * 以下字段不落库，仅供列表接口做轻量摘要，
+     * 避免为了展示分数而把整份 plan / dialogues / report 序列化出去。
+     */
+    @Transient
+    @JsonView(Views.List.class)
+    private Integer reportScore;
+
+    @Transient
+    @JsonView(Views.List.class)
+    private String reportLevel;
+
+    /** 报告状态：GENERATING / SUCCESS / FAILED / EMPTY，历史数据为 null */
+    @Transient
+    @JsonView(Views.List.class)
+    private String reportStatus;
+
+    @Transient
+    @JsonView(Views.List.class)
+    private int dialogueCount;
+
     @JsonView(Views.List.class)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -151,6 +172,14 @@ public class MockInterviewSession {
     public void setCurrentFollowUpCount(int currentFollowUpCount) { this.currentFollowUpCount = currentFollowUpCount; }
     public int getEstimatedDurationMinutes() { return estimatedDurationMinutes; }
     public void setEstimatedDurationMinutes(int estimatedDurationMinutes) { this.estimatedDurationMinutes = estimatedDurationMinutes; }
+    public Integer getReportScore() { return reportScore; }
+    public void setReportScore(Integer reportScore) { this.reportScore = reportScore; }
+    public String getReportLevel() { return reportLevel; }
+    public void setReportLevel(String reportLevel) { this.reportLevel = reportLevel; }
+    public String getReportStatus() { return reportStatus; }
+    public void setReportStatus(String reportStatus) { this.reportStatus = reportStatus; }
+    public int getDialogueCount() { return dialogueCount; }
+    public void setDialogueCount(int dialogueCount) { this.dialogueCount = dialogueCount; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getStartedAt() { return startedAt; }

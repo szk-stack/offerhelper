@@ -3,7 +3,7 @@ import { api } from '../../../api/client'
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
 
-export default function InterviewRoom({ session, onEnd, onUpdate }) {
+export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [pendingMessages, setPendingMessages] = useState([])
@@ -135,7 +135,10 @@ export default function InterviewRoom({ session, onEnd, onUpdate }) {
       <div className="room-header">
         <div className="room-header-top">
           <h3>正在面试: {session.company} - {session.department}</h3>
-          <button className="btn danger" onClick={onEnd}>提前结束面试</button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn secondary" onClick={onPause} disabled={loading}>暂停</button>
+            <button className="btn danger" onClick={onEnd} disabled={loading}>结束并出报告</button>
+          </div>
         </div>
         {totalNum > 0 && (
           <div className="progress-section">

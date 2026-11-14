@@ -1,8 +1,13 @@
 package com.interview.assistant.config;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,75 +16,82 @@ import dev.langchain4j.mcp.McpToolProvider;
 import dev.langchain4j.mcp.client.DefaultMcpClient;
 import dev.langchain4j.mcp.client.McpClient;
 import dev.langchain4j.mcp.client.transport.McpTransport;
-import dev.langchain4j.mcp.client.transport.http.HttpMcpTransport;
 import dev.langchain4j.mcp.client.transport.stdio.StdioMcpTransport;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 
 /**
- * @author BNTang
+ * MCP 工具配置（小红书爬虫）。
+ * <p>
+ * MCP 属于可选能力：脚本不存在或启动失败时只跳过工具，不能把整个应用一起拖垮。
+ * 之前这里写死了本机路径，换一台机器启动就会超时失败。
  */
 @Configuration
 public class McpConfig {
 
-        @Value("${zhipu.apiKey:}")
-        private String apiKey;
+    private static final Logger log = LoggerFactory.getLogger(McpConfig.class);
 
-        @Bean
-        public McpToolProvider mcpToolProvider() {
-                // // 1. 配置与 MCP 服务的通讯方式 (SSE)
-                // McpTransport transport = new HttpMcpTransport.Builder()
-                // .sseUrl("https://open.bigmodel.cn/api/mcp/web_search/sse?Authorization=" +
-                // apiKey)
-                // // 开启日志，方便调试查看交互细节
-                // // .logRequests(true)
-                // // .logResponses(true)
-                // .build();
-                // 创建连接本地爬虫脚本的 Stdio Transport
+    @Value("${zhipu.apiKey:}")
+    private String apiKey;
+
+    /** 是否启用小红书 MCP 工具 */
+    @Value("${app.mcp.enabled:true}")
+    private boolean mcpEnabled;
+
+    /** python 解释器 */
+    @Value("${app.mcp.xhs.python:python}")
+    private String pythonCommand;
+
+    /** 爬虫 MCP 服务脚本路径 */
+    @Value("${app.mcp.xhs.server-script:D:/project/Spider_XHS-master/mcp_server.py}")
+    private String xhsServerScript;
+
+    @Bean
+    public McpToolProvider mcpToolProvider() {
+        List<McpClient> clients = new ArrayList<>();
+        if (!mcpEnabled) {
+            log.info("app.mcp.enabled=false，本次启动不加载 MCP 工具");
+            return McpToolProvider.builder().mcpClients(clients).build();
+        }
+
+        try {
+            if (!Files.isRegularFile(Path.of(xhsServerScript))) {
+                log.warn("小红书 MCP 脚本不存在，跳过 MCP 工具: {}", xhsServerScript);
+            } else {
                 McpTransport xhsTransport = new StdioMcpTransport.Builder()
-                                // 注意这里：第一个元素是你的 python 执行器路径（如果是配好环境变量的，直接写 "python"）
-                                // 第二个元素是你那个 mcp_server.py 的绝对路径
-                                .command(List.of("python", "D:/project/Spider_XHS-master/mcp_server.py"))
-                                .logEvents(true)
-                                .build();
-                // 这是连接爬虫的客户端
-                McpClient xhsClient = new DefaultMcpClient.Builder()
-                                .key("xhsSpiderClient")
-                                .transport(xhsTransport)
-                                .toolExecutionTimeout(Duration.ofSeconds(120))
-                                .build();
-                // 2. 创建 MCP 客户端
-                // McpClient zhipuClient = new DefaultMcpClient.Builder()
-                // .key("neoMcpClient")
-                // .transport(transport)
-                // .build();
-
-                // 3. 从 MCP 客户端获取工具提供者
-                return McpToolProvider.builder()
-                                // mcpClients(List.of(zhipuClient, xhsClient))
-                                .mcpClients(List.of(xhsClient)) // 注意这里传一个 List，包含两个 Client
-                                .build();
+                        .command(List.of(pythonCommand, xhsServerScript))
+                        .logEvents(true)
+                        .build();
+                clients.add(new DefaultMcpClient.Builder()
+                        .key("xhsSpiderClient")
+                        .transport(xhsTransport)
+                        .toolExecutionTimeout(Duration.ofSeconds(120))
+                        .build());
+            }
+        } catch (Exception e) {
+            log.warn("MCP 客户端初始化失败，本次启动不加载 MCP 工具: {}", e.getMessage());
+            clients.clear();
         }
+        return McpToolProvider.builder().mcpClients(clients).build();
+    }
 
-        // 1. 先定义好 AiCodeHelperService 接口（作为内部接口测试用）
-        public interface AiCodeHelperService {
-                String chat(String userMessage);
-        }
+    // 1. 先定义好 AiCodeHelperService 接口（作为内部接口测试用）
+    public interface AiCodeHelperService {
+        String chat(String userMessage);
+    }
 
-        // 2. 注入项目现有的 ChatModel
-        @Bean
-        public AiCodeHelperService aiCodeHelperService(
-                        ChatModel chatModel, // ✅ 使用被 @Primary 标注的智谱模型
-                        McpToolProvider mcpToolProvider) {
+    // 2. 注入项目现有的 ChatModel
+    @Bean
+    public AiCodeHelperService aiCodeHelperService(
+            ChatModel chatModel, // 使用被 @Primary 标注的智谱模型
+            McpToolProvider mcpToolProvider) {
 
-                return AiServices.builder(AiCodeHelperService.class)
-                                .chatModel(chatModel)
-                                .chatMemory(MessageWindowChatMemory.withMaxMessages(10))
-                                .toolProvider(mcpToolProvider) // ✅ 注册刚刚配置好的 MCP 工具
-                                // .contentRetriever(contentRetriever) // 🚫 测试 MCP 可先注释掉或者后续用 ragService
-                                // .tools(new CnblogsArticleTool()) // 🚫 删掉项目中没有的工具
-                                .build();
-        }
+        return AiServices.builder(AiCodeHelperService.class)
+                .chatModel(chatModel)
+                .chatMemory(MessageWindowChatMemory.withMaxMessages(10))
+                .toolProvider(mcpToolProvider) // 注册 MCP 工具（可能为空）
+                .build();
+    }
 
 }

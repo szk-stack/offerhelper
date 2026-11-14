@@ -11,7 +11,6 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
-import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,36 +36,36 @@ public class MockInterviewService {
 
     private final ChatModel mockInterviewPlanModel;
     private final ChatModel mockInterviewChatModel;
-    private final StreamingChatModel mockInterviewStreamingChatModel;
-    
+
     private final RagService ragService;
     private final InterviewFlowEngine flowEngine;
     private final MockInterviewReportService reportService;
     private final MockInterviewSessionRepository sessionRepo;
     private final MockInterviewPlanRepository planRepo;
     private final MockInterviewDialogueRepository dialogueRepo;
+    private final MockInterviewReportRepository reportRepo;
 
     /** sessionId → 内存中的对话上下文 */
     private final Map<String, InterviewContext> contexts = new ConcurrentHashMap<>();
 
     public MockInterviewService(@Qualifier("mockInterviewPlanModel") ChatModel mockInterviewPlanModel,
                                 @Qualifier("mockInterviewChatModel") ChatModel mockInterviewChatModel,
-                                @Qualifier("mockInterviewStreamingChatModel") StreamingChatModel mockInterviewStreamingChatModel,
                                 RagService ragService,
                                 InterviewFlowEngine flowEngine,
                                 MockInterviewReportService reportService,
                                 MockInterviewSessionRepository sessionRepo,
                                 MockInterviewPlanRepository planRepo,
-                                MockInterviewDialogueRepository dialogueRepo) {
+                                MockInterviewDialogueRepository dialogueRepo,
+                                MockInterviewReportRepository reportRepo) {
         this.mockInterviewPlanModel = mockInterviewPlanModel;
         this.mockInterviewChatModel = mockInterviewChatModel;
-        this.mockInterviewStreamingChatModel = mockInterviewStreamingChatModel;
         this.ragService = ragService;
         this.flowEngine = flowEngine;
         this.reportService = reportService;
         this.sessionRepo = sessionRepo;
         this.planRepo = planRepo;
         this.dialogueRepo = dialogueRepo;
+        this.reportRepo = reportRepo;
     }
 
     // ========================== 1. 创建会话 ==========================
@@ -89,17 +88,20 @@ public class MockInterviewService {
         session.setInterviewConfig(interviewConfig);
         session.setStatus(MockInterviewSession.Status.CREATED);
 
-        // 检索关联面经
+        // 检索关联面经（检索失败不能让整场面试建不起来，降级为无面经快照）
         String query = (company != null ? company + " " : "") +
                        (department != null ? department + " " : "") +
                        "技术面试 八股 项目 实习";
-        List<String> relevant = ragService.search(query,
-                company, department, 5);
-        if (!relevant.isEmpty()) {
-            String snapshot = relevant.stream()
-                    .map(t -> t.length() > 800 ? t.substring(0, 800) + "..." : t)
-                    .collect(Collectors.joining("\n\n---\n\n"));
-            session.setExperienceSnapshot(snapshot);
+        try {
+            List<String> relevant = ragService.search(query, company, department, 5);
+            if (!relevant.isEmpty()) {
+                String snapshot = relevant.stream()
+                        .map(t -> t.length() > 800 ? t.substring(0, 800) + "..." : t)
+                        .collect(Collectors.joining("\n\n---\n\n"));
+                session.setExperienceSnapshot(snapshot);
+            }
+        } catch (Exception e) {
+            log.warn("面经检索失败，本次面试将不使用面经快照: {}", e.getMessage());
         }
 
         return sessionRepo.save(session);
@@ -228,7 +230,8 @@ public class MockInterviewService {
             "候选人最新的回复是：\n\"%s\"\n\n" +
             "当前处于「%s」阶段（%s）。\n" +
             "请严格按照以下规则决定你的下一个动作，并在你回复的【最前面】加上隐式标签（必带）：\n\n" +
-            "1. 如果候选人没听懂或要求解释，以 [CLARIFICATION] 开头，然后用通俗的语言解释上一个问题。\n\n" +
+            "1. 如果候选人没听懂或要求解释，以 [CLARIFICATION] 开头，然后用通俗的语言解释上一个问题。" +
+            "解释控制在 300 字以内，讲完再抛一个更简单的验证性问题，不要把标准答案一次性全部讲完。\n\n" +
             "2. 如果候选人给出了实质性回答，但缺少细节或量化指标（且该环节支持深挖：%s），以 [FOLLOW_UP] 开头，" +
             "先对候选人的回答做简要评价（指出哪里答得好、哪里有遗漏或不准确），" +
             "如果回答有错误或不完整，必须先给出当前问题的正确参考答案（讲清关键知识点），" +
@@ -285,6 +288,12 @@ public class MockInterviewService {
 
         ctx.memory.add(AiMessage.from(interviewerReply));
 
+        // 这条回复是「对刚回答那道题的点评 + 新问题」，归属按被回答的题记录，
+        // 否则逐题报告会整体错位到下一题。
+        String reviewedPhaseType = phaseType;
+        int reviewedPhaseIdx = phaseIdx;
+        String reviewedQuestionId = questionId;
+
         if ("NEXT".equals(intent)) {
             boolean hasNext = flowEngine.advanceToNextQuestion(planJson, session);
             if (!hasNext) {
@@ -292,16 +301,15 @@ public class MockInterviewService {
                 sessionRepo.save(session);
                 return endInterview(sessionId);
             }
-            phaseType = flowEngine.getPhaseType(planJson, session.getCurrentPhaseIndex());
         }
 
-        saveDialogue(session, "interviewer", interviewerReply, phaseType,
-                session.getCurrentPhaseIndex(),
-                flowEngine.getQuestionId(planJson, session.getCurrentPhaseIndex(), session.getCurrentQuestionIndex()),
-                "FOLLOW_UP".equals(intent));
+        saveDialogue(session, "interviewer", interviewerReply, reviewedPhaseType,
+                reviewedPhaseIdx, reviewedQuestionId, "FOLLOW_UP".equals(intent));
 
         sessionRepo.save(session);
-        return buildResponse(session, interviewerReply, phaseType, flowEngine.getPhaseTitle(planJson, session.getCurrentPhaseIndex()));
+        return buildResponse(session, interviewerReply,
+                flowEngine.getPhaseType(planJson, session.getCurrentPhaseIndex()),
+                flowEngine.getPhaseTitle(planJson, session.getCurrentPhaseIndex()));
     }
 
     // ========================== 5. 结束面试 ==========================
@@ -311,42 +319,172 @@ public class MockInterviewService {
      */
     public Map<String, Object> endInterview(String sessionId) {
         MockInterviewSession session = getSessionOrThrow(sessionId);
-        session.setStatus(MockInterviewSession.Status.COMPLETED);
-        session.setEndedAt(LocalDateTime.now());
-        sessionRepo.save(session);
-
-        contexts.remove(sessionId);
+        boolean alreadyCompleted = session.getStatus() == MockInterviewSession.Status.COMPLETED;
 
         // 生成结束语
         String closing = "好的，本次模拟面试到此结束。感谢你的参与！我会根据你的表现生成一份详细的评估报告，请稍候...";
 
-        saveDialogue(session, "interviewer", closing,
-                "WRAP_UP", session.getCurrentPhaseIndex(), null, false);
+        if (!alreadyCompleted) {
+            session.setStatus(MockInterviewSession.Status.COMPLETED);
+            session.setEndedAt(LocalDateTime.now());
+            sessionRepo.save(session);
 
-        // 异步生成报告
-        try {
-            MockInterviewReport report = reportService.generateReport(session);
-            session.setReport(report);
-        } catch (Exception e) {
-            log.error("面试报告生成失败, sessionId={}", sessionId, e);
+            contexts.remove(sessionId);
+
+            saveDialogue(session, "interviewer", closing,
+                    "WRAP_UP", session.getCurrentPhaseIndex(), null, false);
+
+            // 报告异步生成：/end 立即返回，前端轮询会话详情获取结果
+            reportService.generateReportAsync(sessionId);
+        }
+
+        MockInterviewReport report = reportRepo.findBySession_SessionId(sessionId).orElse(null);
+        String reportStatus;
+        if (report != null && report.getStatus() != null) {
+            reportStatus = report.getStatus().name();
+        } else if (!alreadyCompleted) {
+            reportStatus = "GENERATING";
+        } else {
+            reportStatus = null;
         }
 
         Map<String, Object> result = new HashMap<>();
         result.put("sessionId", sessionId);
         result.put("status", "COMPLETED");
         result.put("interviewerMessage", closing);
-        result.put("hasReport", session.getReport() != null);
-        if (session.getReport() != null) {
-            result.put("overallScore", session.getReport().getOverallScore());
-            result.put("overallLevel", session.getReport().getOverallLevel());
+        result.put("hasReport", report != null && report.getStatus() == MockInterviewReport.Status.SUCCESS);
+        result.put("reportStatus", reportStatus);
+        if (report != null) {
+            result.put("overallScore", report.getOverallScore());
+            result.put("overallLevel", report.getOverallLevel());
         }
+        return result;
+    }
+
+    // ========================== 6. 生命周期控制 ==========================
+
+    /**
+     * 暂停面试：保留对话与指针，随时可以继续。
+     */
+    public Map<String, Object> pauseInterview(String sessionId) {
+        MockInterviewSession session = getSessionOrThrow(sessionId);
+        if (session.getStatus() != MockInterviewSession.Status.IN_PROGRESS) {
+            throw new IllegalStateException("只有进行中的面试可以暂停");
+        }
+        session.setStatus(MockInterviewSession.Status.PAUSED);
+        sessionRepo.save(session);
+        contexts.remove(sessionId);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("sessionId", sessionId);
+        result.put("status", "PAUSED");
+        result.put("interviewerMessage", "面试已暂停，进度已保存，随时可以回来继续。");
+        return result;
+    }
+
+    /**
+     * 继续面试：从暂停处恢复到当前问题。
+     */
+    public Map<String, Object> resumeInterview(String sessionId) {
+        MockInterviewSession session = getSessionOrThrow(sessionId);
+        if (session.getStatus() != MockInterviewSession.Status.PAUSED
+                && session.getStatus() != MockInterviewSession.Status.IN_PROGRESS) {
+            throw new IllegalStateException("当前状态不能继续面试");
+        }
+        session.setStatus(MockInterviewSession.Status.IN_PROGRESS);
+        sessionRepo.save(session);
+        contexts.computeIfAbsent(sessionId, id -> rebuildContext(session));
+
+        String planJson = session.getPlan() != null ? session.getPlan().getPlanJson() : null;
+        String question = planJson != null
+                ? flowEngine.getQuestionContent(planJson, session.getCurrentPhaseIndex(), session.getCurrentQuestionIndex())
+                : "";
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("sessionId", sessionId);
+        result.put("status", "IN_PROGRESS");
+        result.put("interviewerMessage", "我们继续刚才的面试。当前问题是：\n\n" + question);
+        if (planJson != null) {
+            result.put("currentPhase", flowEngine.getPhaseTitle(planJson, session.getCurrentPhaseIndex()));
+            result.put("currentPhaseType", flowEngine.getPhaseType(planJson, session.getCurrentPhaseIndex()));
+            result.put("progressPercent", flowEngine.getProgressPercent(planJson, session));
+        }
+        return result;
+    }
+
+    /**
+     * 放弃面试：不生成报告，之后可从历史记录里「补生成报告」。
+     */
+    public Map<String, Object> abortInterview(String sessionId) {
+        MockInterviewSession session = getSessionOrThrow(sessionId);
+        if (session.getStatus() == MockInterviewSession.Status.COMPLETED) {
+            throw new IllegalStateException("面试已结束，无需放弃");
+        }
+        session.setStatus(MockInterviewSession.Status.ABORTED);
+        session.setEndedAt(LocalDateTime.now());
+        sessionRepo.save(session);
+        contexts.remove(sessionId);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("sessionId", sessionId);
+        result.put("status", "ABORTED");
+        result.put("interviewerMessage", "本次面试已放弃，对话记录仍然保留。");
+        return result;
+    }
+
+    /**
+     * 重新生成报告：用于生成失败或想重算已结束的面试。
+     */
+    public Map<String, Object> regenerateReport(String sessionId) {
+        MockInterviewSession session = getSessionOrThrow(sessionId);
+        if (session.getStatus() == MockInterviewSession.Status.CREATED
+                || session.getStatus() == MockInterviewSession.Status.PLAN_READY
+                || session.getStatus() == MockInterviewSession.Status.IN_PROGRESS) {
+            throw new IllegalStateException("面试尚未结束，不能生成报告");
+        }
+        reportService.generateReportAsync(sessionId);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("sessionId", sessionId);
+        result.put("reportStatus", "GENERATING");
         return result;
     }
 
     // ========================== 查询接口 ==========================
 
     public List<MockInterviewSession> listSessions() {
-        return sessionRepo.findAllByOrderByCreatedAtDesc();
+        List<MockInterviewSession> sessions = sessionRepo.findAllByOrderByCreatedAtDesc();
+        if (sessions.isEmpty()) {
+            return sessions;
+        }
+        List<Long> ids = sessions.stream()
+                .map(MockInterviewSession::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (ids.isEmpty()) {
+            return sessions;
+        }
+
+        // 列表页只需要分数 / 报告状态 / 对话数，单独批量查，避免把 plan、dialogues、report 全量序列化
+        Map<Long, MockInterviewReportRepository.ReportSummary> reports = reportRepo.findSummaryBySessionIds(ids)
+                .stream()
+                .collect(Collectors.toMap(MockInterviewReportRepository.ReportSummary::getSessionId,
+                        s -> s, (a, b) -> a));
+        Map<Long, Long> dialogueCounts = dialogueRepo.countGroupBySessionIds(ids)
+                .stream()
+                .collect(Collectors.toMap(MockInterviewDialogueRepository.DialogueCount::getSessionId,
+                        MockInterviewDialogueRepository.DialogueCount::getCnt, (a, b) -> a));
+
+        for (MockInterviewSession s : sessions) {
+            MockInterviewReportRepository.ReportSummary summary = reports.get(s.getId());
+            if (summary != null) {
+                s.setReportScore(summary.getOverallScore());
+                s.setReportLevel(summary.getOverallLevel());
+                s.setReportStatus(summary.getStatus() != null ? summary.getStatus().name() : null);
+            }
+            s.setDialogueCount(dialogueCounts.getOrDefault(s.getId(), 0L).intValue());
+        }
+        return sessions;
     }
 
     @Transactional(readOnly = true)

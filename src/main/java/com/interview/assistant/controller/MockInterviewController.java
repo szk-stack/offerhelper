@@ -1,5 +1,6 @@
 package com.interview.assistant.controller;
 
+import com.fasterxml.jackson.annotation.JsonView;
 import com.interview.assistant.entity.MockInterviewSession;
 import com.interview.assistant.service.MockInterviewService;
 import org.slf4j.Logger;
@@ -129,6 +130,58 @@ public class MockInterviewController {
     }
 
     /**
+     * 暂停面试（保留进度，可继续）
+     */
+    @PostMapping("/sessions/{sessionId}/pause")
+    public ResponseEntity<?> pauseInterview(@PathVariable String sessionId) {
+        try {
+            return ResponseEntity.ok(mockInterviewService.pauseInterview(sessionId));
+        } catch (Exception e) {
+            log.error("暂停面试失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * 继续面试（从暂停处恢复）
+     */
+    @PostMapping("/sessions/{sessionId}/resume")
+    public ResponseEntity<?> resumeInterview(@PathVariable String sessionId) {
+        try {
+            return ResponseEntity.ok(mockInterviewService.resumeInterview(sessionId));
+        } catch (Exception e) {
+            log.error("继续面试失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * 放弃面试（保留对话，不生成报告）
+     */
+    @PostMapping("/sessions/{sessionId}/abort")
+    public ResponseEntity<?> abortInterview(@PathVariable String sessionId) {
+        try {
+            return ResponseEntity.ok(mockInterviewService.abortInterview(sessionId));
+        } catch (Exception e) {
+            log.error("放弃面试失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * 重新生成评估报告（生成失败或想重算时使用）
+     */
+    @PostMapping("/sessions/{sessionId}/report")
+    public ResponseEntity<?> regenerateReport(@PathVariable String sessionId) {
+        try {
+            return ResponseEntity.ok(mockInterviewService.regenerateReport(sessionId));
+        } catch (Exception e) {
+            log.error("重新生成报告失败, sessionId={}", sessionId, e);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * 获取面试进度状态
      */
     @GetMapping("/sessions/{sessionId}/progress")
@@ -143,9 +196,11 @@ public class MockInterviewController {
     }
 
     /**
-     * 获取历史面试会话列表
+     * 获取历史面试会话列表。
+     * 只返回列表视图（不含 plan / dialogues / report），分数与报告状态由摘要字段提供。
      */
     @GetMapping("/sessions")
+    @JsonView(MockInterviewSession.Views.List.class)
     public ResponseEntity<List<MockInterviewSession>> listSessions() {
         return ResponseEntity.ok(mockInterviewService.listSessions());
     }

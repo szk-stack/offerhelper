@@ -16,3 +16,6 @@ application-local.yml
 
 frontend/node_modules/
 frontend/dist/
+
+# 工作区记忆/自动化数据
+.workbuddy/

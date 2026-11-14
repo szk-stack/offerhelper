@@ -83,30 +83,36 @@ public class RagService {
     }
 
     public List<String> search(String query, String company, String department, int maxResults) {
-        var queryEmbedding = embeddingModel.embed(query).content();
+        try {
+            var queryEmbedding = embeddingModel.embed(query).content();
 
-        // Build metadata filter
-        Filter filter = null;
-        if (company != null && !company.isEmpty()) {
-            filter = metadataKey("company").isEqualTo(company);
+            // Build metadata filter
+            Filter filter = null;
+            if (company != null && !company.isEmpty()) {
+                filter = metadataKey("company").isEqualTo(company);
+            }
+            if (department != null && !department.isEmpty()) {
+                Filter deptFilter = metadataKey("department").isEqualTo(department);
+                filter = (filter == null) ? deptFilter : filter.and(deptFilter);
+            }
+
+            EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
+                    .queryEmbedding(queryEmbedding)
+                    .maxResults(maxResults)
+                    .minScore(0.5)
+                    .filter(filter)
+                    .build();
+
+            EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(request);
+
+            return searchResult.matches().stream()
+                    .map(m -> m.embedded().text())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            // 向量库或 embedding 不可用时降级为空结果，不能因此让整条业务链路 500
+            log.warn("面经检索失败，本次返回空结果: {}", e.getMessage());
+            return List.of();
         }
-        if (department != null && !department.isEmpty()) {
-            Filter deptFilter = metadataKey("department").isEqualTo(department);
-            filter = (filter == null) ? deptFilter : filter.and(deptFilter);
-        }
-
-        EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
-                .queryEmbedding(queryEmbedding)
-                .maxResults(maxResults)
-                .minScore(0.5)
-                .filter(filter)
-                .build();
-
-        EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(request);
-
-        return searchResult.matches().stream()
-                .map(m -> m.embedded().text())
-                .collect(Collectors.toList());
     }
 
     public List<String> search(String query, int maxResults) {

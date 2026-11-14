@@ -434,3 +434,228 @@
   margin: 0;
   text-align: right;
 }
+
+/* ===== 按钮基类（页面内使用 btn primary / secondary / danger） ===== */
+.btn {
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.btn.secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.btn.secondary:hover:not(:disabled) {
+  background: var(--border);
+}
+.btn.danger {
+  background: var(--bg-tertiary);
+  color: var(--error);
+  border-color: var(--error);
+}
+.btn.danger:hover:not(:disabled) {
+  background: var(--error);
+  color: #fff;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn-mini {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* ===== 会话面板：准备中 / 已暂停 / 已放弃 ===== */
+.session-panel {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.session-panel h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.session-panel-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.session-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* ===== 报告 ===== */
+.report-hint {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.report-summary {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.report-score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 120px;
+}
+.report-score {
+  font-size: 2.4rem;
+  font-weight: 600;
+  color: var(--accent);
+  line-height: 1;
+}
+.report-level {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.report-comment {
+  flex: 1;
+  margin: 0;
+  padding: 1rem;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  line-height: 1.7;
+  font-size: 0.95rem;
+}
+.dimension-score {
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.dimension-comment {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0.25rem 0 0;
+}
+.question-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.question-detail {
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.question-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  line-height: 1.5;
+}
+.question-index {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+.question-score {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.question-answer,
+.question-feedback,
+.question-suggestion {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.question-suggestion {
+  color: var(--text-primary);
+}
+.improvement-list {
+  line-height: 1.9;
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+.report-footer {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+.report-banner {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.report-banner.error {
+  border-color: var(--error);
+}
+.report-banner strong {
+  color: var(--error);
+}
+.report-banner p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.report-banner-hint {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+.report-raw {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.report-raw pre {
+  margin-top: 0.5rem;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--bg-tertiary);
+  padding: 1rem;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.history-report-status {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.history-report-status.failed {
+  color: var(--error);
+}
+.history-report-status.generating {
+  color: var(--accent);
+}

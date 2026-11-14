@@ -12,9 +12,29 @@ import java.time.LocalDateTime;
 @Table(name = "mock_interview_reports")
 public class MockInterviewReport {
 
+    /**
+     * 报告生成状态：前端据此决定展示报告、提示生成中还是给出重试入口。
+     * 历史数据该字段为 null，按「已生成」处理。
+     */
+    public enum Status {
+        GENERATING, // 正在生成
+        SUCCESS,    // 正常生成
+        FAILED,     // 生成失败（已保留原始文本）
+        EMPTY       // 没有对话记录，无法评分
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** 报告生成状态 */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private Status status;
+
+    /** 失败原因（供前端展示与排查） */
+    @Column(length = 1000)
+    private String errorMessage;
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "session_id", nullable = false, unique = true)
@@ -50,6 +70,10 @@ public class MockInterviewReport {
     // ---- Getters & Setters ----
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public Status getStatus() { return status; }
+    public void setStatus(Status status) { this.status = status; }
+    public String getErrorMessage() { return errorMessage; }
+    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public MockInterviewSession getSession() { return session; }
     public void setSession(MockInterviewSession session) { this.session = session; }
     public int getOverallScore() { return overallScore; }

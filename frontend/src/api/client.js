@@ -430,6 +430,14 @@ export const api = {
     }),
   endMockInterview: (sessionId) =>
     request(`/mock-interview/sessions/${sessionId}/end`, { method: 'POST' }),
+  pauseMockInterview: (sessionId) =>
+    request(`/mock-interview/sessions/${sessionId}/pause`, { method: 'POST' }),
+  resumeMockInterview: (sessionId) =>
+    request(`/mock-interview/sessions/${sessionId}/resume`, { method: 'POST' }),
+  abortMockInterview: (sessionId) =>
+    request(`/mock-interview/sessions/${sessionId}/abort`, { method: 'POST' }),
+  regenerateMockReport: (sessionId) =>
+    request(`/mock-interview/sessions/${sessionId}/report`, { method: 'POST' }),
   getMockProgress: (sessionId) => request(`/mock-interview/sessions/${sessionId}/progress`),
   getMockSessions: () => request('/mock-interview/sessions'),
   getMockSession: (sessionId) => request(`/mock-interview/sessions/${sessionId}`),
