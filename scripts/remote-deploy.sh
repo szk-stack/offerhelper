@@ -7,8 +7,8 @@ BUILD_DIR="${BUILD_DIR:-/home/deploy/build}"
 APP_DIR="${APP_DIR:-/home/ubuntu/sspOffer-interview-assistant}"
 REPO="${REPO:-https://github.com/szk-stack/offerhelper.git}"
 BRANCH="${BRANCH:-main}"
-DIST_TAR="${1:-/tmp/frontend-dist.tar.gz}"
-DEPLOY_SCRIPT="${DEPLOY_SCRIPT:-/tmp/ssp-deploy.sh}"
+DIST_TAR="${1:-$HOME/incoming/frontend-dist.tar.gz}"
+DEPLOY_SCRIPT="${DEPLOY_SCRIPT:-$HOME/incoming/ssp-deploy.sh}"
 
 echo "[remote] 同步代码 $BRANCH"
 if [ ! -d "$BUILD_DIR/.git" ]; then

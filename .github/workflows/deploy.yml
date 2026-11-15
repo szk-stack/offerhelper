@@ -83,15 +83,16 @@ jobs:
       - name: Upload dist and scripts
         run: |
           TARGET="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
-          scp -i ~/.ssh/deploy_key -o BatchMode=yes dist/frontend-dist.tar.gz "$TARGET:/tmp/frontend-dist.tar.gz"
-          scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/remote-deploy.sh "$TARGET:/tmp/remote-deploy.sh"
-          scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/server-deploy.sh "$TARGET:/tmp/ssp-deploy.sh"
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$TARGET" "mkdir -p incoming"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes dist/frontend-dist.tar.gz "$TARGET:incoming/frontend-dist.tar.gz"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/remote-deploy.sh "$TARGET:incoming/remote-deploy.sh"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/server-deploy.sh "$TARGET:incoming/ssp-deploy.sh"
 
       - name: Build on server, restart and health check
         run: |
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "bash /tmp/remote-deploy.sh /tmp/frontend-dist.tar.gz"
+            "bash incoming/remote-deploy.sh incoming/frontend-dist.tar.gz"
 
       - name: Verify public endpoint
         run: |
