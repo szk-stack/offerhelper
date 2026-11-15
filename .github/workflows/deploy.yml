@@ -3,6 +3,9 @@ name: Deploy to Production
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:
 
 # 同一时间只允许一个部署，后触发的会取消正在跑的

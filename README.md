@@ -180,6 +180,23 @@ cd frontend && npm install && npm run dev
 
 ---
 
+## CI/CD
+
+推送到 `main` 会自动构建并部署到 https://szk-everything.xyz/interview/ ：
+
+1. GitHub Actions 构建前端（`VITE_BASE=interview`）并执行 `mvn package`（含测试）；
+2. 只上传约 900 KB 的构建上下文（`src` + `pom.xml` + `frontend/dist`）；
+3. 服务器解压后执行 `mvn clean package`，替换 `app.jar` 并重启 `ssp-offer`；
+4. 本地健康检查通过才算成功，失败自动回滚到 `app.jar.prev`。
+
+> 不在 CI 里直接上传 88 MB 的 jar，是因为 GitHub Runner 到国内服务器的跨境带宽实测只有十几 KB/s。
+
+- 手动触发：仓库 Actions → Deploy to Production → Run workflow
+- 服务器脚本：`scripts/remote-deploy.sh`（解压+构建）、`scripts/server-deploy.sh`（替换+重启+回滚）
+- 部署用户：`deploy`，只被授予 `ssp-offer` 的 `systemctl restart/is-active` 权限
+
+---
+
 ## 项目结构
 
 ```
