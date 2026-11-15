@@ -1,6 +1,7 @@
 import { NavLink, Link, useNavigate } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
+import { asset } from '../utils/asset'
 import './Nav.css'
 
 const navItems = [
@@ -27,7 +28,7 @@ export default function Nav() {
     <nav className="nav">
       <div className="nav-brand">
         <NavLink to="/">
-          <img src="/logo.png" alt="sspOffer" className="nav-logo" />
+          <img src={asset('logo.png')} alt="sspOffer" className="nav-logo" />
           <span className="nav-brand-text">sspOffer面经助手</span>
         </NavLink>
       </div>

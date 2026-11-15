@@ -1,5 +1,6 @@
 // 开发时若代理 404，可设置 VITE_API_BASE=http://127.0.0.1:8080/api 直接连后端
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+// 部署到子路径（如 /interview/）时，BASE_URL 会自动带上前缀，无需再改这里
+const API_BASE = import.meta.env.VITE_API_BASE || `${import.meta.env.BASE_URL}api`
 
 import { getPassword, getPasswordAsync, clearPassword, setPassword } from '../utils/adminAuth'
 import { getToken, clearToken, notifyAuthChanged } from '../utils/authToken'
@@ -119,11 +120,11 @@ export const api = {
       throw new Error(text || res.statusText)
     }
     try {
-      await doPostDelete('http://127.0.0.1:8080/api/interviews/experiences/delete')
+      await doPostDelete(`${base}/interviews/experiences/delete`)
       return
     } catch (_) { }
     try {
-      await doDelete(`http://127.0.0.1:8080/api/interviews/experiences/${id}`)
+      await doDelete(`${base}/interviews/experiences/${id}`)
       return
     } catch (_) { }
     try {
@@ -135,7 +136,7 @@ export const api = {
   },
   parseImage: async (file) => {
     const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE
-    const directUrl = 'http://127.0.0.1:8080/api/interviews/parseImage'
+    const directUrl = `${base}/interviews/parseImage`
     const proxyUrl = base.startsWith('http') ? `${base}/interviews/parseImage` : `${base}/interviews/parseImage`
     const doParse = async (targetUrl) => {
       const fd = new FormData()
@@ -164,7 +165,7 @@ export const api = {
   },
   generateQuestions: async (company, department, resume) => {
     const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE
-    const directUrl = 'http://127.0.0.1:8080/api/interviews/questions'
+    const directUrl = `${base}/interviews/questions`
     const proxyUrl = base.startsWith('http') ? `${base}/interviews/questions` : `${base}/interviews/questions`
     const body = JSON.stringify({ company, department, resume })
     const doReq = (url) =>
@@ -242,7 +243,7 @@ export const api = {
     if (p) opts.headers = { ...opts.headers, 'X-Admin-Password': p }
     const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE
     const proxyUrl = base.startsWith('http') ? `${base}/replay/analyze` : `${base}/replay/analyze`
-    const directUrl = 'http://127.0.0.1:8080/api/replay/analyze'
+    const directUrl = `${base}/replay/analyze`
     try {
       let res = await doFetch(proxyUrl, opts, true)
       if (res?.ok) {
@@ -376,7 +377,7 @@ export const api = {
   },
   parseResume: async (file) => {
     const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE
-    const directUrl = 'http://127.0.0.1:8080/api/resumes/parse'
+    const directUrl = `${base}/resumes/parse`
     const proxyUrl = base.startsWith('http') ? `${base}/resumes/parse` : `${base}/resumes/parse`
     const doParse = async (url) => {
       const fd = new FormData()
@@ -411,7 +412,7 @@ export const api = {
   createApplication: async (record) => {
     const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE
     const url = base.startsWith('http') ? `${base}/applications` : `${base}/applications`
-    const directUrl = 'http://127.0.0.1:8080/api/applications'
+    const directUrl = `${base}/applications`
     const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record) }
     const handleRes = (res) => {
       if (res.ok) return res.json()

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { asset } from '../utils/asset'
 import './Login.css'
 
 export default function Login() {
@@ -41,7 +42,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <img src="/logo.png" alt="sspOffer" />
+          <img src={asset('logo.png')} alt="sspOffer" />
           <div>
             <h1>sspOffer 面经助手</h1>
             <p>登录后进入你自己的面试空间</p>

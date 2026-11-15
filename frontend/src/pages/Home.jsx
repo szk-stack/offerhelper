@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { asset } from '../utils/asset'
 import './Home.css'
 
 const features = [
@@ -12,7 +13,7 @@ export default function Home() {
   return (
     <div className="home">
       <header className="hero">
-        <img src="/logo.png" alt="sspOffer" className="hero-logo" />
+        <img src={asset('logo.png')} alt="sspOffer" className="hero-logo" />
         <h1>sspOffer面经助手</h1>
         <p className="hero-sub">互联网后端面试准备平台 · 面经整合 · AI 模拟 · 深度复盘 · 在线刷题</p>
       </header>
