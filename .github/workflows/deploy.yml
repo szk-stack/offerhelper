@@ -16,7 +16,7 @@ env:
 
 jobs:
   build:
-    name: Build
+    name: Build & Test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -47,11 +47,14 @@ jobs:
       - name: Build backend (with tests)
         run: mvn -B -ntp package
 
-      - name: Upload jar
+      - name: Package frontend dist
+        run: tar -czf frontend-dist.tar.gz -C frontend/dist .
+
+      - name: Upload frontend dist
         uses: actions/upload-artifact@v4
         with:
-          name: app-jar
-          path: target/*.jar
+          name: frontend-dist
+          path: frontend-dist.tar.gz
           if-no-files-found: error
           retention-days: 3
 
@@ -59,14 +62,14 @@ jobs:
     name: Deploy
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download jar
+      - name: Download frontend dist
         uses: actions/download-artifact@v4
         with:
-          name: app-jar
+          name: frontend-dist
           path: dist
 
       - name: Configure SSH
@@ -76,18 +79,19 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Upload jar and deploy script
+      # 只上传几百 KB 的前端产物和脚本；jar 在服务器上构建，避免跨境传 88MB
+      - name: Upload dist and scripts
         run: |
-          scp -i ~/.ssh/deploy_key -o BatchMode=yes dist/*.jar \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ env.DEPLOY_DIR }}/app.jar.new"
-          scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/server-deploy.sh \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/ssp-deploy.sh"
+          TARGET="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes dist/frontend-dist.tar.gz "$TARGET:/tmp/frontend-dist.tar.gz"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/remote-deploy.sh "$TARGET:/tmp/remote-deploy.sh"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/server-deploy.sh "$TARGET:/tmp/ssp-deploy.sh"
 
-      - name: Restart and health check
+      - name: Build on server, restart and health check
         run: |
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "bash /tmp/ssp-deploy.sh ${{ env.DEPLOY_DIR }}/app.jar.new"
+            "bash /tmp/remote-deploy.sh /tmp/frontend-dist.tar.gz"
 
       - name: Verify public endpoint
         run: |
