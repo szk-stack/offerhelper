@@ -47,14 +47,14 @@ jobs:
       - name: Build backend (with tests)
         run: mvn -B -ntp package
 
-      - name: Package frontend dist
-        run: tar -czf frontend-dist.tar.gz -C frontend/dist .
+      - name: Package build context
+        run: tar -czf build-context.tar.gz src pom.xml frontend/dist
 
-      - name: Upload frontend dist
+      - name: Upload build context
         uses: actions/upload-artifact@v4
         with:
-          name: frontend-dist
-          path: frontend-dist.tar.gz
+          name: build-context
+          path: build-context.tar.gz
           if-no-files-found: error
           retention-days: 3
 
@@ -66,10 +66,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download frontend dist
+      - name: Download build context
         uses: actions/download-artifact@v4
         with:
-          name: frontend-dist
+          name: build-context
           path: dist
 
       - name: Configure SSH
@@ -79,12 +79,12 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      # 只上传几百 KB 的前端产物和脚本；jar 在服务器上构建，避免跨境传 88MB
+      # 只上传约 1MB 的源码+前端产物；jar 在服务器上构建，避免跨境传 88MB
       - name: Upload dist and scripts
         run: |
           TARGET="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$TARGET" "mkdir -p incoming"
-          scp -i ~/.ssh/deploy_key -o BatchMode=yes dist/frontend-dist.tar.gz "$TARGET:incoming/frontend-dist.tar.gz"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes dist/build-context.tar.gz "$TARGET:incoming/build-context.tar.gz"
           scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/remote-deploy.sh "$TARGET:incoming/remote-deploy.sh"
           scp -i ~/.ssh/deploy_key -o BatchMode=yes scripts/server-deploy.sh "$TARGET:incoming/ssp-deploy.sh"
 
@@ -92,7 +92,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "bash incoming/remote-deploy.sh incoming/frontend-dist.tar.gz"
+            "bash incoming/remote-deploy.sh incoming/build-context.tar.gz"
 
       - name: Verify public endpoint
         run: |
