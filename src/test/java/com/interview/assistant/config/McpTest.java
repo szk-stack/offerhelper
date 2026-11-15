@@ -1,10 +1,12 @@
 package com.interview.assistant.config;
 
 import com.interview.assistant.config.McpConfig.AiCodeHelperService;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import jakarta.annotation.Resource;
 
+@Disabled("依赖本地 MCP 脚本、外部网络和大模型 Key，不适合在 CI 中自动执行")
 @SpringBootTest
 public class McpTest {
 

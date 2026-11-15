@@ -75,7 +75,12 @@ public class DataLoader implements CommandLineRunner {
                                                 null, "快速排序、二分查找"));
 
                 experienceRepository.saveAll(experiences);
-                ragService.indexExperiences(experiences);
+                try {
+                        ragService.indexExperiences(experiences);
+                } catch (Exception e) {
+                        // 没配 Embedding Key 时不应阻断启动，检索降级为空即可
+                        log.warn("跳过示例面经向量索引（未配置 Embedding Key 时属正常）: {}", e.getMessage());
+                }
                 log.info("Loaded {} sample interview experiences", experiences.size());
 
                 if (algorithmRepository.count() > 0)
