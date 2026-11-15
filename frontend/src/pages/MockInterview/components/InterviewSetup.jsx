@@ -1,4 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { api } from '../../../api/client'
+
+const RESUME_ACCEPT = '.pdf,.jpg,.jpeg,.png,.gif,.webp'
+const RESUME_MAX_SIZE = 10 * 1024 * 1024
 
 const DEFAULT_COUNTS = {
   theoretical: 3,
@@ -20,6 +24,11 @@ export default function InterviewSetup({ onComplete }) {
     interviewerStyle: 'GENTLE'
   })
   const [loading, setLoading] = useState(false)
+  const [parsingResume, setParsingResume] = useState(false)
+  const [resumeFileName, setResumeFileName] = useState('')
+  const [resumeError, setResumeError] = useState('')
+  const [draggingResume, setDraggingResume] = useState(false)
+  const resumeInputRef = useRef(null)
   const [enableMandatory, setEnableMandatory] = useState(false)
   const [mandatoryQuestions, setMandatoryQuestions] = useState([''])
   const [difficulty, setDifficulty] = useState('MEDIUM')
@@ -43,6 +52,44 @@ export default function InterviewSetup({ onComplete }) {
   const handleCountChange = (key, value) => {
     const num = Math.max(0, Math.min(10, parseInt(value) || 0))
     setQuestionCounts({ ...questionCounts, [key]: num })
+  }
+
+  const handleResumeFile = async (file) => {
+    if (!file || parsingResume) return
+    setResumeError('')
+
+    const name = file.name || '简历'
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : ''
+    if (!RESUME_ACCEPT.split(',').includes(ext)) {
+      setResumeError('仅支持 PDF 或图片（jpg / png / gif / webp）')
+      return
+    }
+    if (file.size > RESUME_MAX_SIZE) {
+      setResumeError('文件不能超过 10MB')
+      return
+    }
+
+    setParsingResume(true)
+    try {
+      const data = await api.parseResume(file)
+      const content = (data?.content || '').trim()
+      if (!content) {
+        throw new Error('没有从文件中提取到文字，请换一张更清晰的图片，或直接粘贴简历文本')
+      }
+      setFormData(prev => ({ ...prev, resumeText: content }))
+      setResumeFileName(name)
+    } catch (e) {
+      setResumeError(e.message || '简历解析失败，请重试')
+    } finally {
+      setParsingResume(false)
+    }
+  }
+
+  const clearResume = () => {
+    setFormData(prev => ({ ...prev, resumeText: '' }))
+    setResumeFileName('')
+    setResumeError('')
+    if (resumeInputRef.current) resumeInputRef.current.value = ''
   }
 
   const handleSubmit = async (e) => {
@@ -107,12 +154,62 @@ export default function InterviewSetup({ onComplete }) {
       </div>
 
       <div className="form-group">
-        <label>简历文本（关键提取信息即可）</label>
-        <textarea 
-          value={formData.resumeText} 
-          onChange={e => setFormData({...formData, resumeText: e.target.value})} 
-          placeholder="粘贴你的简历项目、实习、技能栈..." 
-          required 
+        <label>简历（可上传 PDF / 图片，也可直接粘贴文本）</label>
+
+        <div
+          className={`resume-upload ${draggingResume ? 'dragging' : ''} ${parsingResume ? 'parsing' : ''}`}
+          onClick={() => !parsingResume && resumeInputRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setDraggingResume(true) }}
+          onDragLeave={() => setDraggingResume(false)}
+          onDrop={e => {
+            e.preventDefault()
+            setDraggingResume(false)
+            handleResumeFile(e.dataTransfer.files?.[0])
+          }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              resumeInputRef.current?.click()
+            }
+          }}
+        >
+          <input
+            ref={resumeInputRef}
+            type="file"
+            accept={RESUME_ACCEPT}
+            hidden
+            onChange={e => {
+              handleResumeFile(e.target.files?.[0])
+              e.target.value = ''
+            }}
+          />
+          {parsingResume ? (
+            <span className="resume-upload-main">正在解析简历，请稍候…</span>
+          ) : (
+            <>
+              <span className="resume-upload-main">点击上传 PDF / 图片简历</span>
+              <span className="resume-upload-sub">
+                也可以把文件拖到这里，支持 pdf、jpg、png、gif、webp（不超过 10MB）
+              </span>
+            </>
+          )}
+        </div>
+
+        {resumeFileName && !parsingResume && (
+          <div className="resume-file-info">
+            <span>已解析：{resumeFileName}（{formData.resumeText.length} 字）</span>
+            <button type="button" className="btn-link" onClick={clearResume}>清空</button>
+          </div>
+        )}
+        {resumeError && <div className="resume-parse-error">{resumeError}</div>}
+
+        <textarea
+          value={formData.resumeText}
+          onChange={e => setFormData({ ...formData, resumeText: e.target.value })}
+          placeholder="上传文件后会自动填入，也可以直接粘贴简历项目、实习、技能栈..."
+          required
         />
       </div>
 

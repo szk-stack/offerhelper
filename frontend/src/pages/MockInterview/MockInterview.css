@@ -672,3 +672,66 @@
 @keyframes stream-caret-blink {
   50% { opacity: 0; }
 }
+
+/* ===== 简历上传（PDF / 图片） ===== */
+.resume-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px;
+  margin-bottom: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.resume-upload:hover,
+.resume-upload.dragging {
+  border-color: var(--accent);
+  background: rgba(129, 140, 248, 0.08);
+  color: var(--text-primary);
+}
+.resume-upload.parsing {
+  cursor: wait;
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.resume-upload-main {
+  font-size: 14px;
+  font-weight: 500;
+}
+.resume-upload-sub {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.resume-file-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.btn-link {
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: underline;
+}
+.btn-link:hover {
+  color: var(--accent-hover);
+}
+.resume-parse-error {
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--error);
+}
