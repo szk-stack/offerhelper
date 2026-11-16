@@ -92,6 +92,12 @@ rag:
 
 server:
   port: 8080
+  # 小内存部署：限制 Tomcat 线程与连接数，避免无谓的线程栈占用
+  tomcat:
+    threads:
+      max: 16
+      min-spare: 4
+    max-connections: 100
 
 # 日志级别配置
 logging:

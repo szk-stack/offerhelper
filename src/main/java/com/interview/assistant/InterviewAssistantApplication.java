@@ -17,8 +17,8 @@ public class InterviewAssistantApplication {
     @Bean(name = "taskExecutor")
     public Executor taskExecutor() {
         ThreadPoolTaskExecutor e = new ThreadPoolTaskExecutor();
-        e.setCorePoolSize(2);
-        e.setMaxPoolSize(4);
+        e.setCorePoolSize(1);
+        e.setMaxPoolSize(2);
         e.setQueueCapacity(100);
         e.setThreadNamePrefix("async-");
         e.initialize();
@@ -29,8 +29,8 @@ public class InterviewAssistantApplication {
     @Bean(name = "interviewStreamExecutor")
     public Executor interviewStreamExecutor() {
         ThreadPoolTaskExecutor e = new ThreadPoolTaskExecutor();
-        e.setCorePoolSize(4);
-        e.setMaxPoolSize(12);
+        e.setCorePoolSize(2);
+        e.setMaxPoolSize(6);
         e.setQueueCapacity(100);
         e.setThreadNamePrefix("mi-stream-");
         e.initialize();

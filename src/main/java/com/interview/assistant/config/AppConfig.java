@@ -26,15 +26,6 @@ import java.util.List;
 @Configuration
 public class AppConfig implements WebMvcConfigurer {
 
-    @Value("${rag.qdrant.host:localhost}")
-    private String qdrantHost;
-
-    @Value("${rag.qdrant.port:6334}")
-    private int qdrantPort;
-
-    @Value("${rag.qdrant.collection:interview_experiences}")
-    private String qdrantCollection;
-
     @Value("${rag.embedding.api-key:}")
     private String embeddingApiKey;
 
