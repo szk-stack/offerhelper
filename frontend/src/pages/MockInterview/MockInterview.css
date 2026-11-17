@@ -735,3 +735,17 @@
   line-height: 1.5;
   color: var(--error);
 }
+
+/* ===== 上次填写记忆 ===== */
+.setup-hint {
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+.setup-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}

@@ -197,6 +197,15 @@ cd frontend && npm install && npm run dev
 
 ---
 
+## 前端路径约定（部署在 `/interview/` 子路径）
+
+- 接口：`import { API_BASE } from 'api/client'`，用 `` `${API_BASE}/...` ``，不要写死 `/api/...`
+- 静态资源：`import { asset } from 'utils/asset'`，用 `asset('logo.png')`
+- 页面跳转：react-router 的 `<Link to="/xxx">`（`to` 不需要加前缀）
+- CI 会执行 `scripts/check-frontend-paths.sh`，发现硬编码根路径直接失败
+
+---
+
 ## 项目结构
 
 ```

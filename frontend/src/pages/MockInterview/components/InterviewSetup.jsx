@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../../../api/client'
+import { useAuth } from '../../../context/AuthContext'
+import { clearSetupDraft, loadSetupDraft, saveSetupDraft } from '../../../utils/setupDraft'
 
 const RESUME_ACCEPT = '.pdf,.jpg,.jpeg,.png,.gif,.webp'
 const RESUME_MAX_SIZE = 10 * 1024 * 1024
@@ -17,6 +19,8 @@ const DIFFICULTY_LABELS = {
 }
 
 export default function InterviewSetup({ onComplete }) {
+  const { user } = useAuth()
+  const userId = user?.userId || user?.username || 'anon'
   const [formData, setFormData] = useState({
     company: '',
     department: '',
@@ -34,6 +38,77 @@ export default function InterviewSetup({ onComplete }) {
   const [difficulty, setDifficulty] = useState('MEDIUM')
   const [enableCustomCounts, setEnableCustomCounts] = useState(false)
   const [questionCounts, setQuestionCounts] = useState({ ...DEFAULT_COUNTS })
+  const [hydrated, setHydrated] = useState(false)
+  const draftRef = useRef(null)
+
+  const buildDraft = () => ({
+    company: formData.company,
+    department: formData.department,
+    resumeText: formData.resumeText,
+    resumeFileName,
+    interviewerStyle: formData.interviewerStyle,
+    difficulty,
+    enableCustomCounts,
+    questionCounts,
+    enableMandatory,
+    mandatoryQuestions
+  })
+  draftRef.current = buildDraft()
+
+  // 进入页面时带出上一次填写的内容（按用户隔离，只在本机）
+  useEffect(() => {
+    const draft = loadSetupDraft(userId)
+    if (draft) {
+      setFormData(prev => ({
+        ...prev,
+        company: typeof draft.company === 'string' ? draft.company : prev.company,
+        department: typeof draft.department === 'string' ? draft.department : prev.department,
+        resumeText: typeof draft.resumeText === 'string' ? draft.resumeText : prev.resumeText,
+        interviewerStyle: draft.interviewerStyle || prev.interviewerStyle
+      }))
+      if (draft.difficulty) setDifficulty(draft.difficulty)
+      if (draft.questionCounts) setQuestionCounts({ ...DEFAULT_COUNTS, ...draft.questionCounts })
+      if (typeof draft.enableCustomCounts === 'boolean') setEnableCustomCounts(draft.enableCustomCounts)
+      if (typeof draft.enableMandatory === 'boolean') setEnableMandatory(draft.enableMandatory)
+      if (Array.isArray(draft.mandatoryQuestions) && draft.mandatoryQuestions.length > 0) {
+        setMandatoryQuestions(draft.mandatoryQuestions)
+      }
+      if (draft.resumeFileName) setResumeFileName(draft.resumeFileName)
+    }
+    setHydrated(true)
+  }, [userId])
+
+  // 改动后自动保存，防抖 300ms
+  useEffect(() => {
+    if (!hydrated) return
+    const timer = setTimeout(() => saveSetupDraft(userId, draftRef.current), 300)
+    return () => clearTimeout(timer)
+  }, [hydrated, userId, formData, resumeFileName, difficulty, enableCustomCounts, questionCounts, enableMandatory, mandatoryQuestions])
+
+  // 关闭页面或离开路由时立刻落盘
+  useEffect(() => {
+    if (!hydrated) return
+    const flush = () => saveSetupDraft(userId, draftRef.current)
+    window.addEventListener('beforeunload', flush)
+    return () => {
+      window.removeEventListener('beforeunload', flush)
+      flush()
+    }
+  }, [hydrated, userId])
+
+  const handleForget = () => {
+    if (!window.confirm('清除本机保存的填写内容？下次进入需要重新填写。')) return
+    clearSetupDraft(userId)
+    setFormData({ company: '', department: '', resumeText: '', interviewerStyle: 'GENTLE' })
+    setDifficulty('MEDIUM')
+    setEnableCustomCounts(false)
+    setQuestionCounts({ ...DEFAULT_COUNTS })
+    setEnableMandatory(false)
+    setMandatoryQuestions([''])
+    setResumeFileName('')
+    setResumeError('')
+    if (resumeInputRef.current) resumeInputRef.current.value = ''
+  }
 
   const handleAddQuestion = () => {
     setMandatoryQuestions([...mandatoryQuestions, ''])
@@ -94,6 +169,7 @@ export default function InterviewSetup({ onComplete }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    saveSetupDraft(userId, buildDraft())
     setLoading(true)
     const submitData = { ...formData, difficulty }
     if (enableMandatory) {
@@ -111,6 +187,7 @@ export default function InterviewSetup({ onComplete }) {
 
   return (
     <form className="setup-form" onSubmit={handleSubmit}>
+      <p className="setup-hint">填写内容会自动保存在本机，下次进入自动带出。</p>
       <div className="form-group">
         <label>目标公司</label>
         <input 
@@ -284,9 +361,14 @@ export default function InterviewSetup({ onComplete }) {
         )}
       </div>
 
-      <button type="submit" className="btn primary" disabled={loading}>
-        {loading ? '正在生成面试计划并匹配面经库...' : '开始模拟面试'}
-      </button>
+      <div className="setup-actions">
+        <button type="submit" className="btn primary" disabled={loading}>
+          {loading ? '正在生成面试计划并匹配面经库...' : '开始模拟面试'}
+        </button>
+        <button type="button" className="btn-link" onClick={handleForget}>
+          清除本机保存
+        </button>
+      </div>
     </form>
   )
 }
