@@ -240,6 +240,10 @@ public class MockInterviewReportService {
         MockInterviewReport report = reportRepo.findBySession_SessionId(session.getSessionId())
                 .orElseGet(MockInterviewReport::new);
         report.setSession(session);
+        // reportJson 是非空列：新建报告时先放占位 JSON，避免 GENERATING 状态入库失败
+        if (report.getReportJson() == null) {
+            report.setReportJson("{}");
+        }
         return report;
     }
 

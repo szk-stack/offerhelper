@@ -63,7 +63,7 @@ public class MockInterviewReport {
      * }
      */
     @Column(columnDefinition = "TEXT", nullable = false)
-    private String reportJson;
+    private String reportJson = "{}";
 
     private LocalDateTime createdAt = LocalDateTime.now();
 
