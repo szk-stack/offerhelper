@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { api } from '../../../api/client'
+import { api, API_BASE } from '../../../api/client'
 import { getToken } from '../../../utils/authToken'
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -128,7 +128,7 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
   /** 流式回答：边收边显示，结束后再刷新会话拿到落库的完整对话 */
   const streamAnswer = async (text) => {
     const token = getToken()
-    const res = await fetch(`/api/mock-interview/sessions/${session.sessionId}/answer/stream`, {
+    const res = await fetch(`${API_BASE}/mock-interview/sessions/${session.sessionId}/answer/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

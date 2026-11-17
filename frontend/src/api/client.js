@@ -1,6 +1,6 @@
 // 开发时若代理 404，可设置 VITE_API_BASE=http://127.0.0.1:8080/api 直接连后端
 // 部署到子路径（如 /interview/）时，BASE_URL 会自动带上前缀，无需再改这里
-const API_BASE = import.meta.env.VITE_API_BASE || `${import.meta.env.BASE_URL}api`
+export const API_BASE = import.meta.env.VITE_API_BASE || `${import.meta.env.BASE_URL}api`
 
 import { getPassword, getPasswordAsync, clearPassword, setPassword } from '../utils/adminAuth'
 import { getToken, clearToken, notifyAuthChanged } from '../utils/authToken'
