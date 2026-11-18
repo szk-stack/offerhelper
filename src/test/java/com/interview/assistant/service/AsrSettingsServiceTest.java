@@ -73,4 +73,20 @@ class AsrSettingsServiceTest {
             }
         }
     }
+
+    @Test
+    void detectProtocolFollowsUrlShape() {
+        // 用户直接把百炼的完整端点粘进来（常见于专属工作空间域名）
+        assertEquals("dashscope", AsrService.detectProtocol("custom",
+                "https://cn-beijing.maas.qianwenaiapi.com/api/v1/services/aigc/multimodal-generation/generation"));
+        // 已经填到 /audio/transcriptions 的，不要再拼后缀
+        assertEquals("openai", AsrService.detectProtocol("custom",
+                "https://api.siliconflow.cn/v1/audio/transcriptions"));
+        // 只填到 /v1 时按供应商预设走
+        assertEquals("openai", AsrService.detectProtocol("siliconflow", "https://api.siliconflow.cn/v1"));
+        assertEquals("dashscope", AsrService.detectProtocol("dashscope", "https://dashscope.aliyuncs.com/api/v1"));
+        assertEquals("tencent", AsrService.detectProtocol("tencent", "https://asr.tencentcloudapi.com"));
+        // 兜底
+        assertEquals("openai", AsrService.detectProtocol("unknown", ""));
+    }
 }

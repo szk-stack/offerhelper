@@ -83,7 +83,7 @@ public class AsrSettingsService {
     private static final Map<String, Preset> PRESETS = Map.of(
             "siliconflow", new Preset(SILICONFLOW_BASE_URL, "FunAudioLLM/SenseVoiceSmall",
                     "硅基流动 API Key（免费额度，sk- 开头）"),
-            "dashscope", new Preset(DASHSCOPE_BASE_URL, "qwen3-asr-flash",
+            "dashscope", new Preset(DASHSCOPE_BASE_URL, "qwen-audio-3.1-asr-flash",
                     "阿里百炼 API Key（每月 10 小时免费）"),
             "tencent", new Preset(TENCENT_BASE_URL, "16k_zh_large",
                     "SecretId:SecretKey（冒号分隔，一句话识别每月 5000 次免费）"),

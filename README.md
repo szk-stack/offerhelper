@@ -191,10 +191,14 @@ cd frontend && npm install && npm run dev
 | 服务商 | Base URL | 模型 | 价格 | 免费额度 |
 |---|---|---|---|---|
 | 硅基流动 | `https://api.siliconflow.cn/v1` | `FunAudioLLM/SenseVoiceSmall` | 免费 | 有并发限速 |
-| 阿里百炼 | `https://dashscope.aliyuncs.com/api/v1` | `qwen3-asr-flash` | 约 0.79 元/小时 | 10 小时/月 |
+| 阿里百炼 | `https://dashscope.aliyuncs.com/api/v1` | `qwen-audio-3.1-asr-flash` | 约 0.79 元/小时 | 10 小时/月 |
 | 腾讯云 | `https://asr.tencentcloudapi.com` | `16k_zh_large` | 约 0.78 元/小时 | 5000 次/月 |
 | 自定义 | 任意 OpenAI 兼容地址 | 自填 | 自定 | — |
 
+- **Base URL 很宽容**：填到 `/v1` 或 `/api/v1` 即可，程序会自动补全端点；
+  如果直接粘贴了完整端点（如百炼专属工作空间的
+  `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`），
+  会原样使用、不再拼接。协议也会按 URL 形态自动识别，所以选「自定义」填百炼端点同样能跑。
 - **腾讯云的 Key 填 `SecretId:SecretKey`**，中间用英文冒号；其余服务商填普通 Bearer Key。
 - **热词表**：技术面试的术语（`Redis`、`分布式锁`、`缓存穿透`…）填进去能显著减少同音字错误，
   设置页已预填一批常见词，按岗位增删即可。腾讯云生效最明显（上限 128 个）。

@@ -25,6 +25,21 @@ const DEFAULT_HOTWORDS = [
   '哈希表', '动态规划', '时间复杂度', '空间复杂度', '压力测试', '链路追踪'
 ].join(',')
 
+/** 根据 Base URL 形态给出「程序会怎么调」的提示，避免拼错路径还不知道 */
+function asrEndpointHint(baseUrl) {
+  const url = (baseUrl || '').toLowerCase()
+  if (url.includes('/multimodal-generation/generation')) {
+    return '已识别为百炼 DashScope 端点：会直接调这个地址，按 multimodal-generation 协议传音频。'
+  }
+  if (url.endsWith('/audio/transcriptions')) {
+    return '已识别为完整端点：会直接调这个地址，不再拼接路径。'
+  }
+  if (url.includes('dashscope.aliyuncs.com') || url.includes('maas.')) {
+    return '会补成 {Base}/services/aigc/multimodal-generation/generation'
+  }
+  return '会补成 {Base}/audio/transcriptions。填到 /v1 即可，不要填到 /audio/transcriptions 以外的方法名。'
+}
+
 export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -343,9 +358,9 @@ export default function Settings() {
             </select>
             <span className="settings-field-hint">
               {asrForm.provider === 'siliconflow' && 'SenseVoiceSmall 目前免费，适合先试效果；有并发限速。'}
-              {asrForm.provider === 'dashscope' && '每月 10 小时免费，中文识别强，Key 在阿里云百炼控制台创建。'}
+              {asrForm.provider === 'dashscope' && '每月 10 小时免费，中文识别强。Base URL 填到 /api/v1 即可；用专属工作空间的话填自己的域名。'}
               {asrForm.provider === 'tencent' && '每月 5000 次免费，热词表效果最好。Key 填「SecretId:SecretKey」，中间用英文冒号。'}
-              {asrForm.provider === 'custom' && '任意支持 /audio/transcriptions 的 OpenAI 兼容服务，如自建 Whisper。'}
+              {asrForm.provider === 'custom' && '任意 /audio/transcriptions 服务；如果填的是百炼的 multimodal-generation 端点，也会自动按百炼协议调用。'}
             </span>
           </label>
 
@@ -357,6 +372,9 @@ export default function Settings() {
               placeholder="https://api.siliconflow.cn/v1"
               required
             />
+            <span className="settings-field-hint">
+              {asrEndpointHint(asrForm.baseUrl)}
+            </span>
           </label>
 
           <label>
