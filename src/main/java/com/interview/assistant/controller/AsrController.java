@@ -88,25 +88,51 @@ public class AsrController {
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("ok", true);
             resp.put("message", "连接成功（" + result.provider() + " / " + result.model()
-                    + "，耗时 " + result.elapsedMs() + "ms"
-                    + (result.text().isBlank() ? "，测试音频无人声，返回空文本属正常" : "）"));
+                    + "，耗时 " + result.elapsedMs() + "ms）");
             resp.put("sample", result.text());
+            if (result.text() == null || result.text().isBlank()) {
+                resp.put("note", "测试音频是合成的底噪，没有人声，返回空文本属于正常");
+            }
             return ResponseEntity.ok(resp);
         } catch (AsrService.AsrException e) {
-            // 静音被服务端判定为「没有识别出内容」说明鉴权已经通过，算连通
-            String msg = e.getMessage() == null ? "" : e.getMessage();
-            if (msg.contains("没有识别出内容") || msg.contains("empty")) {
-                return ResponseEntity.ok(Map.of("ok", true, "message", "连接成功（鉴权通过，测试音频无人声）"));
+            // 鉴权已通过、只是这段合成音频没内容，也说明配置是通的
+            if (isNoSpeechError(e.getCode())) {
+                return ResponseEntity.ok(Map.of("ok", true,
+                        "message", "连接成功（鉴权通过，测试音频无人声）"));
             }
-            return ResponseEntity.ok(Map.of("ok", false, "error", msg));
+            return ResponseEntity.ok(errorBody(e));
         } catch (Exception e) {
-            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            if (msg.contains("401") || msg.contains("403")) {
-                return ResponseEntity.ok(Map.of("ok", false, "error", "Key 无效或余额不足"));
-            }
             log.warn("ASR 测试失败", e);
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return ResponseEntity.ok(Map.of("ok", false, "error", "连接失败：" + abbreviate(msg)));
         }
+    }
+
+    /** 识别层面「没人声」的错误码，说明请求已经打进服务端并完成鉴权 */
+    private static boolean isNoSpeechError(String code) {
+        if (code == null) {
+            return false;
+        }
+        return switch (code) {
+            case "FailedOperation.ErrorRecognize",
+                 "FailedOperation.SilentAudio",
+                 "FailedOperation.NoSpeechDetected" -> true;
+            default -> false;
+        };
+    }
+
+    /** 统一错误响应：message 给人看，code / requestId 方便报障时提供 */
+    private static Map<String, Object> errorBody(AsrService.AsrException e) {
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("ok", false);
+        resp.put("error", e.getMessage());
+        if (e.getCode() != null && !e.getCode().isBlank()) {
+            resp.put("code", e.getCode());
+        }
+        if (e.getRequestId() != null && !e.getRequestId().isBlank()) {
+            resp.put("requestId", e.getRequestId());
+        }
+        return resp;
     }
 
     @PostMapping("/api/asr/transcribe")
@@ -129,7 +155,16 @@ public class AsrController {
             body.put("empty", result.text() == null || result.text().isBlank());
             return ResponseEntity.ok(body);
         } catch (AsrService.AsrException e) {
-            return ResponseEntity.ok(Map.of("error", e.getMessage(), "text", ""));
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("text", "");
+            resp.put("error", e.getMessage());
+            if (e.getCode() != null && !e.getCode().isBlank()) {
+                resp.put("code", e.getCode());
+            }
+            if (e.getRequestId() != null && !e.getRequestId().isBlank()) {
+                resp.put("requestId", e.getRequestId());
+            }
+            return ResponseEntity.ok(resp);
         } catch (Exception e) {
             log.warn("语音识别失败", e);
             String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();

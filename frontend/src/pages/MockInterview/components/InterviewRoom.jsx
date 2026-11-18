@@ -26,6 +26,7 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
   const [pendingMessages, setPendingMessages] = useState([])
   const [streamText, setStreamText] = useState('')
   const [transcribing, setTranscribing] = useState(false)
+  // { message, code, requestId }
   const [voiceError, setVoiceError] = useState(null)
   // 术语纠错默认关闭：勾上就每段自动校对，不勾可以点「校对术语」手动触发
   const [proofread, setProofread] = useState(false)
@@ -53,7 +54,7 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
       const res = await api.transcribeAudio(blob)
       if (gen !== genRef.current) return
       if (res?.error) {
-        setVoiceError(res.error)
+        setVoiceError({ message: res.error, code: res.code, requestId: res.requestId })
         return
       }
       let text = (res?.text || '').trim()
@@ -73,7 +74,7 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
       baseTextRef.current = next
       setInput(next)
     } catch (e) {
-      if (gen === genRef.current) setVoiceError(e.message || '语音识别失败')
+      if (gen === genRef.current) setVoiceError({ message: e.message || '语音识别失败' })
     }
   }, [proofread])
 
@@ -115,11 +116,11 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
         baseTextRef.current = res.text
         setInput(res.text)
       } else {
-        setVoiceError('校对完成，没有发现需要修改的术语')
+        setVoiceError({ message: '校对完成，没有发现需要修改的术语' })
         setTimeout(() => setVoiceError(null), 2500)
       }
     } catch (e) {
-      setVoiceError(e.message || '校对失败')
+      setVoiceError({ message: e.message || '校对失败' })
     } finally {
       setProofreading(false)
     }
@@ -309,11 +310,20 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
           <div className={`voice-status ${(voiceError || recorder.error) ? 'is-error' : ''}`}>
             {recorder.active && <span className="voice-dot" />}
             <span className="voice-text">
-              {(voiceError || recorder.error)
+              {voiceError?.message
+                || recorder.error
                 || (transcribing
                   ? '正在识别…'
                   : '正在听，说完停顿一下就会自动上屏')}
             </span>
+            {voiceError?.code && (
+              <code
+                className="voice-code"
+                title={voiceError.requestId ? `Request ID: ${voiceError.requestId}` : '服务端返回的错误码'}
+              >
+                {voiceError.code}
+              </code>
+            )}
             {recorder.active && (
               <span className="voice-meter">
                 <i style={{ width: `${Math.min(100, Math.round(recorder.level * 700))}%` }} />

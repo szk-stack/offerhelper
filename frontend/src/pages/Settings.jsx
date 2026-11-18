@@ -205,7 +205,11 @@ export default function Settings() {
     setAsrMessage(null)
     try {
       const data = await api.testAsrSettings(asrPayload())
-      setAsrMessage({ ok: !!data.ok, text: data.ok ? (data.message || '连接成功') : (data.error || '连接失败') })
+      const text = data.ok ? (data.message || '连接成功') : (data.error || '连接失败')
+      const detail = data.code
+        ? `错误码 ${data.code}${data.requestId ? ' · Request ID ' + data.requestId : ''}`
+        : ''
+      setAsrMessage({ ok: !!data.ok, text, detail })
     } catch (err) {
       setAsrMessage({ ok: false, text: err.message })
     } finally {
@@ -345,7 +349,10 @@ export default function Settings() {
         </div>
 
         {asrMessage && (
-          <div className={asrMessage.ok ? 'settings-success' : 'settings-error'}>{asrMessage.text}</div>
+          <div className={asrMessage.ok ? 'settings-success' : 'settings-error'}>
+            {asrMessage.text}
+            {asrMessage.detail && <span className="settings-error-detail">{asrMessage.detail}</span>}
+          </div>
         )}
 
         <form onSubmit={saveAsr} className="settings-form">

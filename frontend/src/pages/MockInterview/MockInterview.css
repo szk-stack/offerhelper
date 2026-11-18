@@ -836,3 +836,16 @@
     margin-right: 0;
   }
 }
+
+/* 服务端错误码：小字、可选中，方便复制给客服排查 */
+.voice-code {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  cursor: help;
+  user-select: all;
+}

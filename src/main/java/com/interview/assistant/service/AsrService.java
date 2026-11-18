@@ -71,11 +71,31 @@ public class AsrService {
         // 即使供应商选的是「自定义」，也要走对应协议，否则会拼出根本不存在的路径。
         String protocol = detectProtocol(provider, cfg.baseUrl());
 
-        String text = switch (protocol) {
-            case "tencent" -> transcribeTencent(cfg, wav);
-            case "dashscope" -> transcribeDashScope(cfg, wav);
-            default -> transcribeOpenAiCompatible(cfg, wav);
-        };
+        String text;
+        try {
+            text = switch (protocol) {
+                case "tencent" -> transcribeTencent(cfg, wav);
+                case "dashscope" -> transcribeDashScope(cfg, wav);
+                default -> transcribeOpenAiCompatible(cfg, wav);
+            };
+        } catch (AsrException e) {
+            throw e;
+        } catch (java.net.http.HttpTimeoutException e) {
+            throw new AsrException("语音识别请求超时（超过 60 秒）。检查服务器能否正常访问外网，"
+                    + "或者这段音频太长，缩短一点再试。", "Timeout", null);
+        } catch (java.net.UnknownHostException e) {
+            throw new AsrException("域名解析失败：" + abbreviate(e.getMessage())
+                    + "。检查 Base URL 是否拼错，或该域名是否只能在特定网络下访问。", "UnknownHost", null);
+        } catch (java.net.ConnectException e) {
+            throw new AsrException("连不上语音识别服务器。确认 Base URL 域名正确、"
+                    + "且运行本服务的机器能访问外网（专属域名可能只对特定网络开放）。", "ConnectFailed", null);
+        } catch (java.io.IOException e) {
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            throw new AsrException("网络异常：" + abbreviate(msg), "NetworkError", null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AsrException("识别请求被中断，请重试。", "Interrupted", null);
+        }
 
         long cost = System.currentTimeMillis() - start;
         log.info("ASR 完成 provider={} protocol={} model={} 音频={}KB 耗时={}ms 文本={}字",
@@ -137,7 +157,7 @@ public class AsrService {
         HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         JsonNode json = parse(response.body());
         if (response.statusCode() / 100 != 2) {
-            throw new AsrException(friendlyOpenAiError(response.statusCode(), json, response.body()));
+            throw openAiError(response.statusCode(), json, response.body(), model);
         }
         String text = json.path("text").asText("");
         // 有的兼容实现会把结果放在 choices 里
@@ -203,7 +223,7 @@ public class AsrService {
         HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         JsonNode json = parse(response.body());
         if (response.statusCode() / 100 != 2) {
-            throw new AsrException(friendlyDashScopeError(response.statusCode(), json, response.body(), model));
+            throw dashScopeError(response.statusCode(), json, response.body(), model);
         }
 
         // 主字段是 output.text；部分模型把结果放在 choices[].message.content 里
@@ -300,13 +320,15 @@ public class AsrService {
         HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         JsonNode json = parse(response.body());
         JsonNode resp = json.path("Response");
+        String requestId = resp.path("RequestId").asText("");
         if (resp.has("Error")) {
             String code = resp.path("Error").path("Code").asText("");
             String message = resp.path("Error").path("Message").asText("");
-            throw new AsrException(friendlyTencentError(code, message));
+            throw tencentError(code, message, requestId);
         }
         if (response.statusCode() / 100 != 2) {
-            throw new AsrException("腾讯云语音识别请求失败（HTTP " + response.statusCode() + "）");
+            throw new AsrException("腾讯云语音识别请求失败（HTTP " + response.statusCode() + "）",
+                    String.valueOf(response.statusCode()), requestId);
         }
         return clean(resp.path("Result").asText(""));
     }
@@ -380,70 +402,202 @@ public class AsrService {
         return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String friendlyOpenAiError(int status, JsonNode json, String raw) {
-        String msg = json.path("error").path("message").asText("");
-        if (msg.isBlank()) {
-            msg = json.path("message").asText("");
+    /**
+     * OpenAI 兼容服务（硅基流动 / 自建）的错误映射。
+     * 这类服务的 code 字段位置不统一：硅基流动放顶层，OpenAI 标准放 error.code。
+     */
+    static AsrException openAiError(int status, JsonNode json, String raw, String model) {
+        String code = firstNonBlank(json.path("error").path("code").asText(""),
+                json.path("code").asText(""));
+        String msg = firstNonBlank(json.path("error").path("message").asText(""),
+                json.path("message").asText(""));
+        String lowerMsg = (msg == null ? "" : msg).toLowerCase();
+
+        if (lowerMsg.contains("model") && (lowerMsg.contains("not exist") || lowerMsg.contains("not found"))) {
+            return new AsrException("模型「" + model + "」不存在，核对服务商文档里的模型 ID（注意大小写和斜杠）。",
+                    code, null);
         }
         if (status == 401 || status == 403) {
-            return "语音识别 Key 无效或余额不足，请到设置页检查";
+            return new AsrException("API Key 无效或没有权限，请到设置页检查。", code, null);
+        }
+        if (status == 404) {
+            return new AsrException("接口地址不对。OpenAI 兼容服务一般填到 /v1 即可，"
+                    + "程序会自动补 /audio/transcriptions；粘贴完整端点也会原样使用。", code, null);
         }
         if (status == 429) {
-            return "语音识别调用过于频繁，请稍后再试";
+            return new AsrException("调用太频繁被限流了。免费额度的并发很低，说慢一点或等几秒再试。", code, null);
         }
-        if (status == 404) {
-            return "语音识别接口地址不对，请检查 Base URL 是否包含 /v1";
+        if (status == 413) {
+            return new AsrException("这段音频太大被服务端拒收，说话短一点再试。", code, null);
         }
-        return "语音识别失败（HTTP " + status + "）" + (msg.isBlank() ? "" : "：" + abbreviate(msg));
+        if (status >= 500) {
+            return new AsrException("服务端临时故障（HTTP " + status + "），稍等再试。", code, null);
+        }
+        return new AsrException(fallbackMessage("HTTP " + status, msg, raw), code, null);
     }
 
-    private static String friendlyDashScopeError(int status, JsonNode json, String raw, String model) {
-        String code = json.path("code").asText("");
-        String msg = json.path("message").asText("");
-        String lower = (msg == null ? "" : msg).toLowerCase();
-        if (status == 401 || status == 403) {
-            return "阿里百炼 Key 无效，请到设置页检查";
+    /**
+     * 百炼错误映射，严格按官方错误码表区分。
+     * 百炼把好几类完全不同的错误都塞在 400 下（参数错误、欠费、内容审核、模型不存在），
+     * 所以必须先看业务码和 message，只看 HTTP 状态会全部提示成「参数错误」。
+     */
+    static AsrException dashScopeError(int status, JsonNode json, String raw, String model) {
+        JsonNode output = json.path("output");
+        String code = firstNonBlank(json.path("code").asText(""), output.path("code").asText(""));
+        String msg = firstNonBlank(json.path("message").asText(""), output.path("message").asText(""));
+        String requestId = firstNonBlank(json.path("request_id").asText(""),
+                output.path("request_id").asText(""));
+        String lowerCode = code.toLowerCase();
+        String lowerMsg = (msg == null ? "" : msg).toLowerCase();
+
+        // 模型不存在 / 未开通：官方同时在 400 InvalidParameter 和 404 ModelNotFound 出现
+        if (lowerCode.contains("modelnotfound") || lowerCode.contains("model_not_found")
+                || lowerMsg.contains("model not exist") || lowerMsg.contains("not found or not supported")
+                || lowerMsg.contains("model is not supported") || lowerMsg.contains("is not activated")) {
+            return new AsrException("模型「" + model + "」不存在或未开通。核对名字是否区分大小写、"
+                    + "是否属于当前地域，并到百炼控制台的模型广场确认已开通。", code, requestId);
         }
-        if (lower.contains("model not exist") || lower.contains("model not found")) {
-            return "模型「" + model + "」在该账号下不存在：请确认模型名，并到百炼控制台确认已开通此模型"
-                    + (msg.isBlank() ? "" : "（原始信息：" + abbreviate(msg) + "）");
+
+        // 工作空间不对
+        if (lowerCode.contains("workspacenotfound") || lowerMsg.contains("workspace not found")) {
+            return new AsrException("工作空间 ID 不对。Base URL 里的 {WorkspaceId} 要换成你自己的，"
+                    + "并在控制台确认该空间存在。", code, requestId);
         }
-        if (status == 404) {
-            return "接口地址不对：百炼填 https://dashscope.aliyuncs.com/api/v1 即可"
-                    + "（专属工作空间填自己的域名，到 /api/v1 为止，后面的路径程序会自动补）";
+
+        // 401 Key 无效
+        if (status == 401 || lowerCode.contains("invalidapikey") || lowerCode.contains("invalid_api_key")
+                || lowerMsg.contains("invalid access token") || lowerMsg.contains("incorrect api key")
+                || lowerMsg.contains("no api-key provided")) {
+            return new AsrException("API Key 无效。确认 Key 完整无空格，且与 Base URL 属于同一地域；"
+                    + "专属工作空间要用该空间下创建的 Key。", code, requestId);
         }
-        if ("Throttling".equalsIgnoreCase(code) || status == 429) {
-            return "语音识别调用超出限流，请稍后再试";
+
+        // 403 权限 / 未开通
+        if (status == 403 || lowerCode.contains("accessdenied") || lowerCode.contains("access_denied")) {
+            // AccessDenied.Unpurchased 的 "unpurchased" 在 code 里，不在 message 里
+            if (lowerCode.contains("unpurchased") || lowerMsg.contains("unpurchased")
+                    || lowerMsg.contains("not activated") || lowerMsg.contains("not purchase")) {
+                return new AsrException("账号还没开通百炼服务，先到阿里云百炼控制台完成开通。", code, requestId);
+            }
+            return new AsrException("没有调用该模型的权限。在百炼控制台的模型调用授权里给当前业务空间授权，"
+                    + "或改用主账号创建的 Key。", code, requestId);
         }
-        if (msg.isBlank()) {
-            msg = raw;
+
+        // 429 限流 / 额度耗尽
+        if (status == 429 || lowerCode.contains("throttling") || lowerMsg.contains("insufficient_quota")
+                || lowerMsg.contains("rate limit") || lowerMsg.contains("quota exceeded")) {
+            if (lowerMsg.contains("quota") || lowerCode.contains("allocationquota")
+                    || lowerCode.contains("freetieronly")) {
+                return new AsrException("额度用完了（免费额度或套餐额度）。到百炼控制台看用量，"
+                        + "或者直接换一家服务商继续用。", code, requestId);
+            }
+            return new AsrException("请求太频繁被限流了，等几秒再试。", code, requestId);
         }
-        return "语音识别失败（HTTP " + status + "）" + (msg == null || msg.isBlank() ? "" : "：" + abbreviate(msg));
+
+        // 欠费
+        if (lowerCode.contains("arrearage") || lowerMsg.contains("arrearage")
+                || lowerMsg.contains("account is in good standing") || lowerMsg.contains("out_of_service")) {
+            return new AsrException("阿里云账号欠费，服务已暂停。充值后等几分钟再试。", code, requestId);
+        }
+
+        // 内容安全拦截
+        if (lowerCode.contains("datainspection") || lowerMsg.contains("inappropriate content")) {
+            return new AsrException("这段音频被内容安全检测拦下了，换个说法再试。", code, requestId);
+        }
+
+        // 400 参数错误（含音频格式问题）
+        if (status == 400 || lowerCode.contains("invalidparameter") || lowerCode.contains("invalid_parameter")) {
+            if (lowerMsg.contains("audio") || lowerMsg.contains("format")
+                    || lowerMsg.contains("sample") || lowerMsg.contains("voice")) {
+                return new AsrException("音频参数不被接受：" + abbreviate(msg)
+                        + "。程序固定上传 16kHz 单声道 WAV，若该模型要求别的采样率或格式，"
+                        + "请换支持 WAV 的模型（如 qwen-audio-3.1-asr-flash）。", code, requestId);
+            }
+            return new AsrException("请求参数有误：" + abbreviate(msg), code, requestId);
+        }
+
+        // 5xx 服务端
+        if (status >= 500) {
+            return new AsrException("百炼服务端临时故障（HTTP " + status + "），稍等再试。", code, requestId);
+        }
+
+        return new AsrException(fallbackMessage("HTTP " + status, msg, raw), code, requestId);
     }
 
-    private static String friendlyTencentError(String code, String message) {
-        return switch (code) {
-            case "AuthFailure.SignatureFailure", "AuthFailure.SecretIdNotFound" ->
-                    "腾讯云 SecretId / SecretKey 不正确";
-            case "AuthFailure.SignatureExpire" -> "请求签名已过期，请检查服务器时间";
-            case "FailedOperation.ErrorRecognize" -> "没有识别出内容，请靠近麦克风再说一次";
-            case "FailedOperation.AudioDurationExceed" -> "单段音频过长，请缩短后重试";
-            case "FailedOperation.ServiceNotOpened" -> "腾讯云语音识别服务未开通，请先到控制台开通";
-            case "RequestLimitExceeded" -> "调用频率超限，请稍后再试";
-            case "ResourceUnavailable.InArrears" -> "腾讯云账户余额不足";
-            default -> "腾讯云语音识别失败" + (code.isBlank() ? "" : "（" + code + "）")
+    /**
+     * 腾讯云错误映射，按官方错误码文档分类。
+     * 一句话识别的错误码是 "ErrorCode.ErrorReason" 两级结构，所以用精确匹配 + 前缀兜底。
+     */
+    static AsrException tencentError(String code, String message, String requestId) {
+        String msg = switch (code) {
+            case "AuthFailure.SecretIdNotFound", "AuthFailure.SignatureFailure" ->
+                    "腾讯云 SecretId / SecretKey 不正确。填写格式是「SecretId:SecretKey」，中间用英文冒号。";
+            case "AuthFailure.InvalidSecretId" ->
+                    "SecretId 格式不对，确认没有把 SecretKey 填到冒号前面。";
+            case "AuthFailure.SignatureExpire" -> "请求签名已过期，检查服务器时间是否准确。";
+            case "AuthFailure.UnauthorizedOperation" ->
+                    "这个 Key 没有语音识别的权限，去 CAM 控制台给子账号授权 QcloudASRFullAccess。";
+            case "FailedOperation.ServiceNotOpened" -> "腾讯云语音识别服务还没开通，先到控制台开通。";
+            case "FailedOperation.ErrorRecognize" -> "这段音频没识别出内容，靠近麦克风、说清楚一点再试。";
+            case "FailedOperation.SilentAudio", "FailedOperation.NoSpeechDetected" ->
+                    "音频里没有检测到人声，检查麦克风是否被静音了。";
+            case "FailedOperation.AudioDecodeFailed" -> "音频解码失败，确认格式和采样率是 16kHz 单声道 WAV。";
+            case "FailedOperation.AudioDurationExceed" -> "单段音频太长，控制在 60 秒以内。";
+            case "FailedOperation.AudioTooLarge" -> "音频文件太大，说短一点。";
+            case "InvalidParameterValue.AudioFormatError", "InvalidParameterValue.ErrorVoiveFormat" ->
+                    "音频格式不被接受。程序上传的是 16kHz 单声道 WAV，确认中间没有被转码。";
+            case "InvalidParameterValue", "InvalidParameter" ->
+                    "请求参数有误：" + abbreviate(message);
+            case "RequestLimitExceeded" -> "调用频率超出限制，等一会儿再试。";
+            case "ResourceUnavailable.InArrears" -> "腾讯云账号欠费，充值后重试。";
+            case "ResourceUnavailable.NotExist" -> "服务资源不存在，确认语音识别服务已开通。";
+            case "ResourceUnavailable.StopUsing" -> "服务已停用，检查账号状态。";
+            default -> "腾讯云语音识别失败"
+                    + (code == null || code.isBlank() ? "" : "（" + code + "）")
                     + (message == null || message.isBlank() ? "" : "：" + abbreviate(message));
         };
+        return new AsrException(msg, code, requestId);
+    }
+
+    private static String fallbackMessage(String statusLabel, String msg, String raw) {
+        String detail = (msg != null && !msg.isBlank()) ? msg : raw;
+        return "语音识别失败（" + statusLabel + "）"
+                + (detail == null || detail.isBlank() ? "" : "：" + abbreviate(detail));
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        return (a != null && !a.isBlank()) ? a : b;
     }
 
     private static String abbreviate(String s) {
-        return s.length() > 200 ? s.substring(0, 200) + "…" : s;
+        if (s == null) {
+            return "";
+        }
+        // 错误信息要能一眼看完，太长的服务端堆栈截断
+        return s.length() > 120 ? s.substring(0, 120) + "…" : s;
     }
 
-    /** 面向用户的语音识别异常，接口层直接把 message 返回给前端 */
+    /** 面向用户的语音识别异常，接口层把 message / code / requestId 一并返回给前端 */
     public static class AsrException extends RuntimeException {
+        private final String code;
+        private final String requestId;
+
         public AsrException(String message) {
+            this(message, null, null);
+        }
+
+        public AsrException(String message, String code, String requestId) {
             super(message);
+            this.code = code;
+            this.requestId = requestId;
+        }
+
+        public String getCode() {
+            return code;
+        }
+
+        public String getRequestId() {
+            return requestId;
         }
     }
 }

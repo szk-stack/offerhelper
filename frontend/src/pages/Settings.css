@@ -169,3 +169,13 @@
   outline: none;
   border-color: var(--accent);
 }
+
+/* 错误码等次要信息，跟在错误文案后面 */
+.settings-error-detail {
+  display: block;
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  opacity: 0.75;
+  user-select: all;
+}
