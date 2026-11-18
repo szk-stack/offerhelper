@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { api, API_BASE } from '../../../api/client'
 import { getToken } from '../../../utils/authToken'
-
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+import { useRecorder } from '../../../utils/useRecorder'
 
 function parseSseBlock(block) {
   let event = 'message'
@@ -26,64 +25,105 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
   const [loading, setLoading] = useState(false)
   const [pendingMessages, setPendingMessages] = useState([])
   const [streamText, setStreamText] = useState('')
-  const [isRecording, setIsRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const [voiceError, setVoiceError] = useState(null)
+  // 术语纠错默认关闭：勾上就每段自动校对，不勾可以点「校对术语」手动触发
+  const [proofread, setProofread] = useState(false)
+  const [proofreading, setProofreading] = useState(false)
   const scrollRef = useRef(null)
-  const recognitionRef = useRef(null)
 
-  // 语音识别切换
-  const toggleVoice = useCallback(() => {
-    if (!SpeechRecognition) {
-      alert('当前浏览器不支持语音识别，请使用 Chrome')
-      return
-    }
+  // 录音期间输入框里的基础文本，每段识别结果往后追加
+  const baseTextRef = useRef('')
+  const inputRef = useRef('')
+  useEffect(() => { inputRef.current = input }, [input])
 
-    if (isRecording) {
-      recognitionRef.current?.stop()
-      setIsRecording(false)
-      return
-    }
+  // 语音识别是否已配置：没配就别让用户白录一段再报错
+  const [asrReady, setAsrReady] = useState(null)
+  useEffect(() => {
+    api.getAsrSettings()
+      .then(d => setAsrReady(!!d?.configured))
+      .catch(() => setAsrReady(false))
+  }, [])
 
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'zh-CN'
-    recognition.continuous = true
-    recognition.interimResults = true
-
-    // 记住录音开始时输入框已有的文本
-    const baseText = input
-
-    let finalTranscript = ''
-
-    recognition.onresult = (event) => {
-      let interim = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          // 如果上一段末尾没有标点，自动补上句号
-          if (finalTranscript && !/[。！？，；、.!?,;]$/.test(finalTranscript.trim())) {
-            finalTranscript += '。'
-          }
-          finalTranscript += text
-        } else {
-          interim += text
-        }
+  /** 处理一段音频：上传 → 可选校对 → 追加到输入框 */
+  const processSegment = useCallback(async (blob) => {
+    // 记录代次：如果这段识别期间用户已经发送或清空了输入框，结果直接丢弃
+    const gen = genRef.current
+    try {
+      const res = await api.transcribeAudio(blob)
+      if (gen !== genRef.current) return
+      if (res?.error) {
+        setVoiceError(res.error)
+        return
       }
-      // 已有文本 + 语音结果，不会覆盖之前的内容
-      setInput(baseText + finalTranscript + interim)
-    }
+      let text = (res?.text || '').trim()
+      if (!text) return
 
-    recognition.onerror = (event) => {
-      console.error('语音识别错误:', event.error)
-      setIsRecording(false)
-    }
+      if (proofread) {
+        try {
+          const fixed = await api.proofreadText(text)
+          if (fixed?.text) text = fixed.text
+        } catch (_) { /* 校对失败就用原始结果 */ }
+      }
+      if (gen !== genRef.current) return
 
-    recognition.onend = () => {
-      setIsRecording(false)
+      const prefix = baseTextRef.current
+      const sep = prefix && !/[\s，。！？、；：]$/.test(prefix) ? '。' : ''
+      const next = prefix ? `${prefix}${sep}${text}` : text
+      baseTextRef.current = next
+      setInput(next)
+    } catch (e) {
+      if (gen === genRef.current) setVoiceError(e.message || '语音识别失败')
     }
+  }, [proofread])
 
-    recognitionRef.current = recognition
-    recognition.start()
-    setIsRecording(true)
-  }, [isRecording, input])
+  // 串行队列：连续说话时每段都会排队，避免后一段先返回把前一段覆盖掉
+  const queueRef = useRef(Promise.resolve())
+  const pendingRef = useRef(0)
+  const genRef = useRef(0)
+
+  const handleSegment = useCallback((blob) => {
+    pendingRef.current += 1
+    setTranscribing(true)
+    queueRef.current = queueRef.current
+      .then(() => processSegment(blob))
+      .catch(() => {})
+      .finally(() => {
+        pendingRef.current = Math.max(0, pendingRef.current - 1)
+        if (pendingRef.current === 0) setTranscribing(false)
+      })
+  }, [processSegment])
+
+  const recorder = useRecorder({ onSegment: handleSegment })
+
+  const toggleVoice = useCallback(() => {
+    if (!recorder.active) {
+      baseTextRef.current = inputRef.current
+      setVoiceError(null)
+    }
+    recorder.toggle()
+  }, [recorder])
+
+  /** 手动触发一次术语校对，返回是否改动 */
+  const runProofread = useCallback(async () => {
+    const current = inputRef.current.trim()
+    if (!current || proofreading) return
+    setProofreading(true)
+    try {
+      const res = await api.proofreadText(current)
+      if (res?.text && res.text !== current) {
+        baseTextRef.current = res.text
+        setInput(res.text)
+      } else {
+        setVoiceError('校对完成，没有发现需要修改的术语')
+        setTimeout(() => setVoiceError(null), 2500)
+      }
+    } catch (e) {
+      setVoiceError(e.message || '校对失败')
+    } finally {
+      setProofreading(false)
+    }
+  }, [proofreading])
 
   // 合并后端对话 + 本地待确认消息
   const allMessages = [...(session.dialogues || []), ...pendingMessages]
@@ -102,11 +142,18 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
   }, [session.dialogues])
 
   const handleSend = async () => {
-    if (!input.trim() || loading) return
-    
+    // 录音中不发送：否则最后半句还没上屏就被清空了
+    if (!input.trim() || loading || recorder.active) return
+
+    // 丢弃还在路上的识别结果，避免发送后又把文字塞回输入框
+    genRef.current += 1
+    pendingRef.current = 0
+    setTranscribing(false)
+
     const text = input
     setInput('')
-    
+    baseTextRef.current = ''
+
     // 立刻在本地显示用户消息
     setPendingMessages([{ role: 'candidate', content: text, pending: true }])
     setStreamText('')
@@ -118,6 +165,7 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
     } catch (e) {
       alert('发送失败: ' + e.message)
       setInput(text)
+      baseTextRef.current = text
       setPendingMessages([])
     } finally {
       setLoading(false)
@@ -250,10 +298,36 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
       </div>
 
       <div className="input-area">
+        {asrReady === false && (
+          <div className="voice-status">
+            <span className="voice-text">
+              语音输入还没配置：到右上角「设置 → 语音识别」填一个 Key 就能用了（硅基流动有免费额度）。
+            </span>
+          </div>
+        )}
+        {(recorder.active || transcribing || voiceError || recorder.error) && (
+          <div className={`voice-status ${(voiceError || recorder.error) ? 'is-error' : ''}`}>
+            {recorder.active && <span className="voice-dot" />}
+            <span className="voice-text">
+              {(voiceError || recorder.error)
+                || (transcribing
+                  ? '正在识别…'
+                  : '正在听，说完停顿一下就会自动上屏')}
+            </span>
+            {recorder.active && (
+              <span className="voice-meter">
+                <i style={{ width: `${Math.min(100, Math.round(recorder.level * 700))}%` }} />
+              </span>
+            )}
+          </div>
+        )}
         <textarea
           value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="输入你的回答... (输入完毕按发送)"
+          onChange={e => {
+            setInput(e.target.value)
+            baseTextRef.current = e.target.value
+          }}
+          placeholder="输入你的回答，或点「语音」直接说…（Enter 发送，Shift+Enter 换行）"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -261,17 +335,43 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
             }
           }}
         />
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className="input-actions">
           <button
-            className={`btn ${isRecording ? 'danger' : 'secondary'}`}
+            className={`btn ${recorder.active ? 'danger' : 'secondary'} voice-btn`}
             onClick={toggleVoice}
-            disabled={loading}
-            title={isRecording ? '停止录音' : '语音输入'}
-            style={{ minWidth: '44px', fontSize: '1.2rem' }}
+            disabled={loading || !recorder.supported || asrReady === false}
+            title={!recorder.supported
+              ? '当前浏览器不支持录音，请使用 Chrome / Edge'
+              : asrReady === false
+                ? '请先到「设置 → 语音识别」配置一个 Key'
+                : (recorder.active ? '停止录音' : '开始语音输入')}
           >
-            {isRecording ? '⏹' : '🎤'}
+            {recorder.active ? '⏹ 停止' : '🎤 语音'}
           </button>
-          <button className="btn primary" onClick={handleSend} disabled={loading || !input.trim()}>
+          <label className="proofread-toggle" title="识别后用大模型修正技术术语，如「对列」改成「队列」">
+            <input
+              type="checkbox"
+              checked={proofread}
+              onChange={e => setProofread(e.target.checked)}
+            />
+            <span>术语纠错</span>
+          </label>
+          {!recorder.active && input.trim() && (
+            <button
+              className="btn-link proofread-now"
+              onClick={runProofread}
+              disabled={proofreading}
+              title="把当前文本里的技术术语再校一遍"
+            >
+              {proofreading ? '校对中…' : '校对术语'}
+            </button>
+          )}
+          <button
+            className="btn primary"
+            onClick={handleSend}
+            disabled={loading || !input.trim() || recorder.active}
+            title={recorder.active ? '请先停止录音再发送' : ''}
+          >
             发送回答
           </button>
         </div>

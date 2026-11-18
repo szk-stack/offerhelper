@@ -42,6 +42,27 @@ public class LlmSettings {
     @Column(length = 100)
     private String visionModel;
 
+    // ── 语音识别（ASR）配置，和大模型配置放在同一行，设置页两个分区 ──
+
+    /** siliconflow / dashscope / tencent / custom */
+    @Column(length = 20)
+    private String asrProvider;
+
+    /** Bearer Key；腾讯云存 "SecretId:SecretKey" */
+    @JsonIgnore
+    @Column(length = 400)
+    private String asrApiKey;
+
+    @Column(length = 300)
+    private String asrBaseUrl;
+
+    @Column(length = 100)
+    private String asrModel;
+
+    /** 热词表，逗号分隔，最多 128 个（腾讯云上限） */
+    @Column(length = 1200)
+    private String asrHotwords;
+
     private LocalDateTime updatedAt = LocalDateTime.now();
 
     public Long getId() {
@@ -106,6 +127,46 @@ public class LlmSettings {
 
     public void setVisionModel(String visionModel) {
         this.visionModel = visionModel;
+    }
+
+    public String getAsrProvider() {
+        return asrProvider;
+    }
+
+    public void setAsrProvider(String asrProvider) {
+        this.asrProvider = asrProvider;
+    }
+
+    public String getAsrApiKey() {
+        return asrApiKey;
+    }
+
+    public void setAsrApiKey(String asrApiKey) {
+        this.asrApiKey = asrApiKey;
+    }
+
+    public String getAsrBaseUrl() {
+        return asrBaseUrl;
+    }
+
+    public void setAsrBaseUrl(String asrBaseUrl) {
+        this.asrBaseUrl = asrBaseUrl;
+    }
+
+    public String getAsrModel() {
+        return asrModel;
+    }
+
+    public void setAsrModel(String asrModel) {
+        this.asrModel = asrModel;
+    }
+
+    public String getAsrHotwords() {
+        return asrHotwords;
+    }
+
+    public void setAsrHotwords(String asrHotwords) {
+        this.asrHotwords = asrHotwords;
     }
 
     public LocalDateTime getUpdatedAt() {

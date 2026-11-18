@@ -180,6 +180,37 @@ cd frontend && npm install && npm run dev
 
 ---
 
+## 语音识别（语音输入回答）
+
+模拟面试页的「🎤 语音」按钮把口头回答转成文字。**不再使用浏览器自带的 Web Speech API**
+（它走 Google 服务器，国内经常 `network` 错误，且技术术语几乎必错、无法加热词），
+改为前端采集 PCM 后上传后端，由云端 ASR 识别。
+
+设置页「语音识别」支持四家，选一个填 Key 即可：
+
+| 服务商 | Base URL | 模型 | 价格 | 免费额度 |
+|---|---|---|---|---|
+| 硅基流动 | `https://api.siliconflow.cn/v1` | `FunAudioLLM/SenseVoiceSmall` | 免费 | 有并发限速 |
+| 阿里百炼 | `https://dashscope.aliyuncs.com/api/v1` | `qwen3-asr-flash` | 约 0.79 元/小时 | 10 小时/月 |
+| 腾讯云 | `https://asr.tencentcloudapi.com` | `16k_zh_large` | 约 0.78 元/小时 | 5000 次/月 |
+| 自定义 | 任意 OpenAI 兼容地址 | 自填 | 自定 | — |
+
+- **腾讯云的 Key 填 `SecretId:SecretKey`**，中间用英文冒号；其余服务商填普通 Bearer Key。
+- **热词表**：技术面试的术语（`Redis`、`分布式锁`、`缓存穿透`…）填进去能显著减少同音字错误，
+  设置页已预填一批常见词，按岗位增删即可。腾讯云生效最明显（上限 128 个）。
+- **术语纠错**：默认关闭。勾选后每段识别结果会用当前对话模型再过一遍，只修技术术语不动语气；
+  也可以点「校对术语」手动触发。
+- 未配置 Key 时语音按钮是禁用的，并在输入框上方提示前往设置页。
+
+实现要点（改这块之前先看一眼）：
+
+- 音频格式固定 **16kHz / 单声道 / 16bit WAV**，前端用 Web Audio 取 PCM 自己编码，
+  不依赖 MediaRecorder（Chrome 只出 webm/opus，云 ASR 普遍不收）。
+- 静音 **0.8 秒**自动切句，单段最多 45 秒，停顿即上屏，延迟 0.5–1 秒。
+- 多段识别走串行队列，避免后一段先返回把前一段覆盖；发送回答时会丢弃在途结果。
+
+---
+
 ## CI/CD
 
 推送到 `main` 会自动构建并部署到 https://szk-everything.xyz/interview/ ：

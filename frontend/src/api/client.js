@@ -91,6 +91,35 @@ export const api = {
   testLlmSettings: (config) =>
     request('/settings/llm/test', { method: 'POST', body: JSON.stringify(config) }),
 
+  // 语音识别配置
+  getAsrSettings: () => request('/settings/asr'),
+  saveAsrSettings: (config) =>
+    request('/settings/asr', { method: 'PUT', body: JSON.stringify(config) }),
+  resetAsrSettings: () => request('/settings/asr', { method: 'DELETE' }),
+  testAsrSettings: (config) =>
+    request('/settings/asr/test', { method: 'POST', body: JSON.stringify(config) }),
+
+  /** 上传一段 WAV 转文字，返回 { text, provider, elapsedMs } 或 { error } */
+  transcribeAudio: async (blob) => {
+    const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE
+    const fd = new FormData()
+    fd.append('audio', blob, 'segment.wav')
+    const res = await doFetch(`${base}/asr/transcribe`, { method: 'POST', headers: {}, body: fd }, true)
+    if (!res.ok) {
+      let msg = `${res.status} ${res.statusText}`
+      try {
+        const body = await res.json()
+        if (body?.error) msg = body.error
+      } catch (_) { }
+      throw new Error(msg)
+    }
+    return res.json()
+  },
+
+  /** 术语校对：只修技术术语错别字，不改语气 */
+  proofreadText: (text) =>
+    request('/asr/proofread', { method: 'POST', body: JSON.stringify({ text }) }),
+
   // 面经
   getCompanies: () => request('/interviews/companies'),
   getDepartments: (company) => request(`/interviews/companies/${encodeURIComponent(company)}/departments`),
