@@ -33,8 +33,6 @@ public class TenantBootstrapService implements CommandLineRunner {
     private final UserResumeRepository resumeRepo;
     private final ApplicationRecordRepository applicationRepo;
     private final UserInterviewRecordRepository recordRepo;
-    private final InterviewChatSessionRepository chatSessionRepo;
-    private final ToolChatSessionRepository toolSessionRepo;
 
     @Value("${app.auth.bootstrap-password:}")
     private String bootstrapPassword;
@@ -44,24 +42,20 @@ public class TenantBootstrapService implements CommandLineRunner {
                                   MockInterviewSessionRepository sessionRepo,
                                   UserResumeRepository resumeRepo,
                                   ApplicationRecordRepository applicationRepo,
-                                  UserInterviewRecordRepository recordRepo,
-                                  InterviewChatSessionRepository chatSessionRepo,
-                                  ToolChatSessionRepository toolSessionRepo) {
+                                  UserInterviewRecordRepository recordRepo) {
         this.tenantRepo = tenantRepo;
         this.userRepo = userRepo;
         this.sessionRepo = sessionRepo;
         this.resumeRepo = resumeRepo;
         this.applicationRepo = applicationRepo;
         this.recordRepo = recordRepo;
-        this.chatSessionRepo = chatSessionRepo;
-        this.toolSessionRepo = toolSessionRepo;
     }
 
     @Override
     @Transactional
     public void run(String... args) {
         long totalRows = sessionRepo.count() + resumeRepo.count() + applicationRepo.count()
-                + recordRepo.count() + chatSessionRepo.count() + toolSessionRepo.count();
+                + recordRepo.count();
         if (totalRows == 0) {
             return;
         }
@@ -79,9 +73,7 @@ public class TenantBootstrapService implements CommandLineRunner {
         int migrated = sessionRepo.assignTenantIdToLegacy(tenant.getId())
                 + resumeRepo.assignTenantIdToLegacy(tenant.getId())
                 + applicationRepo.assignTenantIdToLegacy(tenant.getId())
-                + recordRepo.assignTenantIdToLegacy(tenant.getId())
-                + chatSessionRepo.assignTenantIdToLegacy(tenant.getId())
-                + toolSessionRepo.assignTenantIdToLegacy(tenant.getId());
+                + recordRepo.assignTenantIdToLegacy(tenant.getId());
         if (migrated > 0) {
             log.info("已将 {} 条历史数据归属到租户 {}", migrated, tenant.getId());
         }

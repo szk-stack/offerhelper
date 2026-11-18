@@ -96,6 +96,19 @@ export default function InterviewHistory({ onSelect, onBack }) {
                   <div className="history-card-title">
                     <strong>{s.company || '未知公司'}</strong>
                     <span className="history-dept">{s.department || '未知部门'}</span>
+                    {s.mode === 'SIMULATION' && (
+                      <span
+                        style={{
+                          fontSize: '0.78em',
+                          padding: '1px 7px',
+                          borderRadius: 999,
+                          background: 'rgba(255,138,0,0.14)',
+                          color: '#c76a00'
+                        }}
+                      >
+                        真实模拟
+                      </span>
+                    )}
                   </div>
                   <div className="history-card-meta">
                     <span className="history-status" style={{ background: st.color }}>{st.label}</span>

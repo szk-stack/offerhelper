@@ -80,7 +80,8 @@ public class MockInterviewReportService {
                   "candidateAnswer": "候选人的回答摘要（50字以内）",
                   "score": 1-10,
                   "feedback": "点评",
-                  "suggestion": "改进建议"
+                  "suggestion": "改进建议",
+                  "referenceAnswer": "这道题的标准参考答案（分点作答，200字以内）；练习模式下候选人已当场看过答案，可留空字符串"
                 }
               ],
               "improvementPlan": ["建议1", "建议2"]
@@ -158,7 +159,7 @@ public class MockInterviewReportService {
         String rawJson;
         try {
             ChatResponse response = mockInterviewPlanModel.chat(
-                    SystemMessage.from(REPORT_SYSTEM_PROMPT),
+                    SystemMessage.from(REPORT_SYSTEM_PROMPT + buildModeInstruction(session)),
                     UserMessage.from(prompt)
             );
             rawJson = response.aiMessage().text();
@@ -230,10 +231,32 @@ public class MockInterviewReportService {
         if (session.getDifficulty() != null) {
             sb.append(" / 难度：").append(session.getDifficulty());
         }
+        sb.append(" / 面试模式：").append(isSimulationMode(session) ? "真实模拟（过程中未给任何反馈）" : "练习（逐题已给反馈）");
         sb.append("\n\n---\n\n");
         sb.append(transcript);
         sb.append("\n\n---\n\n请根据以上对话生成量化评估报告（JSON 格式）。");
         return sb.toString();
+    }
+
+    private boolean isSimulationMode(MockInterviewSession session) {
+        return "SIMULATION".equalsIgnoreCase(session.getMode());
+    }
+
+    /**
+     * 真实模拟模式下，候选人在过程中没有拿到任何答案，因此报告必须补齐每题的标准参考答案；
+     * 练习模式下这些答案已在对话里出现过，report 里留空即可，避免重复占篇幅。
+     */
+    private String buildModeInstruction(MockInterviewSession session) {
+        if (!isSimulationMode(session)) {
+            return "\n补充要求：本场为练习模式，候选人在每轮已当场看到参考答案，questionDetails 的 referenceAnswer 一律输出空字符串。";
+        }
+        return """
+                \n补充要求：本场为真实模拟模式，候选人在面试过程中没有收到任何评价和参考答案，
+                因此你必须为 questionDetails 中的每一道主问题补齐 referenceAnswer：
+                1. referenceAnswer 必须是完整的标准答案，分点作答，覆盖关键知识点，不要只写「见解析」这种占位内容；
+                2. 候选人答错的题，referenceAnswer 要写清正确结论和常见误区；
+                3. overallComment 除了总评，还要点出这场最该补的 1-2 个方向。
+                """;
     }
 
     private MockInterviewReport getOrCreateReport(MockInterviewSession session) {

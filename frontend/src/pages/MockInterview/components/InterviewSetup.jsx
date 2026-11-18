@@ -36,6 +36,7 @@ export default function InterviewSetup({ onComplete }) {
   const [enableMandatory, setEnableMandatory] = useState(false)
   const [mandatoryQuestions, setMandatoryQuestions] = useState([''])
   const [difficulty, setDifficulty] = useState('MEDIUM')
+  const [mode, setMode] = useState('PRACTICE')
   const [enableCustomCounts, setEnableCustomCounts] = useState(false)
   const [questionCounts, setQuestionCounts] = useState({ ...DEFAULT_COUNTS })
   const [hydrated, setHydrated] = useState(false)
@@ -48,6 +49,7 @@ export default function InterviewSetup({ onComplete }) {
     resumeFileName,
     interviewerStyle: formData.interviewerStyle,
     difficulty,
+    mode,
     enableCustomCounts,
     questionCounts,
     enableMandatory,
@@ -67,6 +69,7 @@ export default function InterviewSetup({ onComplete }) {
         interviewerStyle: draft.interviewerStyle || prev.interviewerStyle
       }))
       if (draft.difficulty) setDifficulty(draft.difficulty)
+      if (draft.mode) setMode(draft.mode)
       if (draft.questionCounts) setQuestionCounts({ ...DEFAULT_COUNTS, ...draft.questionCounts })
       if (typeof draft.enableCustomCounts === 'boolean') setEnableCustomCounts(draft.enableCustomCounts)
       if (typeof draft.enableMandatory === 'boolean') setEnableMandatory(draft.enableMandatory)
@@ -83,7 +86,7 @@ export default function InterviewSetup({ onComplete }) {
     if (!hydrated) return
     const timer = setTimeout(() => saveSetupDraft(userId, draftRef.current), 300)
     return () => clearTimeout(timer)
-  }, [hydrated, userId, formData, resumeFileName, difficulty, enableCustomCounts, questionCounts, enableMandatory, mandatoryQuestions])
+  }, [hydrated, userId, formData, resumeFileName, difficulty, mode, enableCustomCounts, questionCounts, enableMandatory, mandatoryQuestions])
 
   // 关闭页面或离开路由时立刻落盘
   useEffect(() => {
@@ -101,6 +104,7 @@ export default function InterviewSetup({ onComplete }) {
     clearSetupDraft(userId)
     setFormData({ company: '', department: '', resumeText: '', interviewerStyle: 'GENTLE' })
     setDifficulty('MEDIUM')
+    setMode('PRACTICE')
     setEnableCustomCounts(false)
     setQuestionCounts({ ...DEFAULT_COUNTS })
     setEnableMandatory(false)
@@ -171,7 +175,7 @@ export default function InterviewSetup({ onComplete }) {
     e.preventDefault()
     saveSetupDraft(userId, buildDraft())
     setLoading(true)
-    const submitData = { ...formData, difficulty }
+    const submitData = { ...formData, difficulty, mode }
     if (enableMandatory) {
       const validQuestions = mandatoryQuestions.filter(q => q.trim())
       if (validQuestions.length > 0) {
@@ -208,6 +212,43 @@ export default function InterviewSetup({ onComplete }) {
           required 
         />
       </div>
+      <div className="form-group">
+        <label>面试模式</label>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {[
+            { key: 'PRACTICE', title: '练习模式', desc: '每题答完立刻点评、纠错并给出参考答案' },
+            { key: 'SIMULATION', title: '真实模拟', desc: '全程只追问或换题，结束后统一给答案和总评' }
+          ].map(opt => {
+            const active = mode === opt.key
+            return (
+              <label
+                key={opt.key}
+                style={{
+                  flex: '1 1 220px',
+                  cursor: 'pointer',
+                  border: `1.5px solid ${active ? '#4f7cff' : '#d9dde7'}`,
+                  background: active ? 'rgba(79,124,255,0.08)' : 'transparent',
+                  borderRadius: 10,
+                  padding: '0.7rem 0.85rem',
+                  transition: 'all .15s'
+                }}
+              >
+                <input
+                  type="radio"
+                  name="interviewMode"
+                  value={opt.key}
+                  checked={active}
+                  onChange={() => setMode(opt.key)}
+                  style={{ marginRight: 6 }}
+                />
+                <strong>{opt.title}</strong>
+                <div style={{ fontSize: '0.82em', opacity: 0.72, marginTop: 4 }}>{opt.desc}</div>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+
       <div className="form-row">
         <div className="form-group" style={{ flex: 1 }}>
           <label>面试官风格</label>

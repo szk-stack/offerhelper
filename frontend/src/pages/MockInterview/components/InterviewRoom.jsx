@@ -260,7 +260,23 @@ export default function InterviewRoom({ session, onEnd, onPause, onUpdate }) {
     <div className="room-container">
       <div className="room-header">
         <div className="room-header-top">
-          <h3>正在面试: {session.company} - {session.department}</h3>
+          <h3>
+            正在面试: {session.company} - {session.department}
+            <span
+              style={{
+                marginLeft: '0.5rem',
+                fontSize: '0.72em',
+                fontWeight: 500,
+                padding: '2px 8px',
+                borderRadius: 999,
+                verticalAlign: 'middle',
+                background: session.mode === 'SIMULATION' ? 'rgba(255,138,0,0.14)' : 'rgba(79,124,255,0.12)',
+                color: session.mode === 'SIMULATION' ? '#c76a00' : '#3a63d8'
+              }}
+            >
+              {session.mode === 'SIMULATION' ? '真实模拟 · 不点评' : '练习模式 · 逐题点评'}
+            </span>
+          </h3>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="btn secondary" onClick={onPause} disabled={loading}>暂停</button>
             <button className="btn danger" onClick={onEnd} disabled={loading}>结束并出报告</button>

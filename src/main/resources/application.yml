@@ -63,17 +63,6 @@ app:
   # 模拟面试：超过多少小时没有新发言，自动把 IN_PROGRESS 会话标记为 ABORTED
   mock-interview:
     stale-hours: 12
-  # 可选：小红书 MCP 工具；脚本不存在或启动失败时只跳过工具，不影响应用启动
-  mcp:
-    enabled: true
-    xhs:
-      python: "python"
-      server-script: "D:/project/Spider_XHS-master/mcp_server.py"
-  algorithm-search:
-    enabled: false            # 默认关闭；需要联网搜索时，在本地 application-local.yml 打开并配置 api-key
-    provider: "searchcans"    # searchcans / bing / serper，可在本地覆盖
-    api-key: "${ALGO_SEARCH_API_KEY:}"   # 勿在本文件写死真实 key，改用环境变量或 application-local.yml
-    serper-api-url: "https://google.serper.dev/search"
 
 # 语音识别（ASR）：部署级默认值。每个账号可以在「设置 → 语音识别」里填自己的 Key，优先于本文件。
 # provider 可选：siliconflow（硅基流动，SenseVoiceSmall 免费）/ dashscope（阿里百炼 Qwen3-ASR）
@@ -85,10 +74,6 @@ asr:
   model: ""
   # 热词：技术面试常见术语，能显著降低同音字错误；留空则用服务商默认
   hotwords: ""
-
-# 小红书爬虫 FastAPI 微服务地址（Spider_XHS-master/server.py）
-xhs-spider:
-  api-url: "http://localhost:8686"
 
 # 向量检索配置 (Qdrant + 智谱 Embedding)
 rag:
@@ -113,13 +98,8 @@ server:
 # 日志级别配置
 logging:
   level:
-    # LangChain4j 模型交互日志（显示 LLM 请求/响应 + 工具调用决策）
+    # LangChain4j 模型交互日志（显示 LLM 请求/响应）
     "[dev.langchain4j.model]": DEBUG
-    # 小红书爬虫集成服务日志
-    "[com.interview.assistant.service.XhsSpiderService]": DEBUG
-    # 面试助手工具调用日志
-    "[com.interview.assistant.service.InterviewAssistantTools]": DEBUG
-    "[dev.langchain4j.mcp]": DEBUG
   charset:
     console: GBK
     

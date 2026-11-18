@@ -1,13 +1,7 @@
 package com.interview.assistant.controller;
 
-import com.interview.assistant.entity.InterviewChatSession;
 import com.interview.assistant.entity.InterviewExperience;
-import com.interview.assistant.entity.ToolChatSession;
-import com.interview.assistant.exception.NotFoundException;
 import com.interview.assistant.service.InterviewDataService;
-import com.interview.assistant.service.InterviewAgentService;
-import com.interview.assistant.service.InterviewAgentWithToolsService;
-import com.interview.assistant.service.InterviewChatService;
 import com.interview.assistant.service.ImageParseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,13 +9,15 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.json.MappingJacksonValue;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.List;
 import java.util.Map;
 
+/**
+ * 面经库：图片解析录入、按公司/部门检索、面经增删。
+ * AI 面试与智能助手已下线，对应的 /questions、/chat、/chat-session、/tool-session 接口一并移除。
+ */
 @RestController
 @RequestMapping("/api/interviews")
 @CrossOrigin
@@ -29,18 +25,11 @@ public class InterviewController {
 
     private static final Logger log = LoggerFactory.getLogger(InterviewController.class);
     private final InterviewDataService interviewDataService;
-    private final InterviewAgentService agentService;
-    private final InterviewAgentWithToolsService agentWithToolsService;
-    private final InterviewChatService interviewChatService;
     private final ImageParseService imageParseService;
 
-    public InterviewController(InterviewDataService interviewDataService, InterviewAgentService agentService,
-            InterviewAgentWithToolsService agentWithToolsService,
-            InterviewChatService interviewChatService, ImageParseService imageParseService) {
+    public InterviewController(InterviewDataService interviewDataService,
+            ImageParseService imageParseService) {
         this.interviewDataService = interviewDataService;
-        this.agentService = agentService;
-        this.agentWithToolsService = agentWithToolsService;
-        this.interviewChatService = interviewChatService;
         this.imageParseService = imageParseService;
     }
 
@@ -74,21 +63,6 @@ public class InterviewController {
             @RequestParam String company,
             @RequestParam(required = false) String department) {
         return ResponseEntity.ok(interviewDataService.search(company, department));
-    }
-
-    @PostMapping("/questions")
-    public ResponseEntity<?> generateQuestions(@RequestBody Map<String, String> request) {
-        String company = request != null ? request.get("company") : null;
-        String department = request != null ? request.getOrDefault("department", "") : "";
-        String resume = request != null ? request.getOrDefault("resume", "") : "";
-        try {
-            String result = agentService.generateInterviewQuestions(company, department, resume);
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("generateQuestions failed", e);
-            return ResponseEntity.status(500)
-                    .body(Map.of("error", e.getMessage() != null ? e.getMessage() : "生成失败，请检查智谱 API 配置"));
-        }
     }
 
     @PostMapping("/experiences")
@@ -131,197 +105,5 @@ public class InterviewController {
             log.error("POST /experiences/delete id={} 失败", id, e);
             throw e;
         }
-    }
-
-    @PostMapping("/chat")
-    public ResponseEntity<String> chat(@RequestBody Map<String, String> request) {
-        String query = request.get("query");
-        String company = request.getOrDefault("company", "");
-        String department = request.getOrDefault("department", "");
-        String result = agentService.chatWithContext(query, company.isEmpty() ? null : company,
-                department.isEmpty() ? null : department);
-        return ResponseEntity.ok(result);
-    }
-
-    /** 带 Function Calling 的对话（无状态，兼容旧接口） */
-    @PostMapping("/chat-with-tools")
-    public ResponseEntity<?> chatWithTools(@RequestBody Map<String, String> request) {
-        String message = request != null ? request.get("message") : null;
-        if (message == null || message.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "message 不能为空"));
-        }
-        try {
-            String reply = agentWithToolsService.chat(message);
-            return ResponseEntity.ok(Map.of("reply", reply));
-        } catch (Exception e) {
-            log.error("chatWithTools failed", e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "对话失败"));
-        }
-    }
-
-    // ==================== 智能助手会话管理 ====================
-
-    /** 创建新的智能助手会话 */
-    @PostMapping("/tool-sessions")
-    public ResponseEntity<?> createToolSession() {
-        try {
-            String sessionId = agentWithToolsService.createSession();
-            return ResponseEntity.ok(Map.of("sessionId", sessionId));
-        } catch (Exception e) {
-            log.error("createToolSession failed", e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "创建会话失败"));
-        }
-    }
-
-    /** 智能助手带会话的对话（支持多轮记忆） */
-    @PostMapping("/tool-chat")
-    public ResponseEntity<?> toolChat(@RequestBody Map<String, String> request) {
-        String sessionId = request != null ? request.get("sessionId") : null;
-        String message = request != null ? request.get("message") : null;
-        if (sessionId == null || sessionId.isBlank() || message == null || message.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "sessionId 和 message 不能为空"));
-        }
-        try {
-            String reply = agentWithToolsService.chatWithSession(sessionId, message);
-            return ResponseEntity.ok(Map.of("reply", reply));
-        } catch (Exception e) {
-            log.error("toolChat failed", e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "对话失败"));
-        }
-    }
-
-    /** 智能助手会话列表（不含消息） */
-    @GetMapping("/tool-sessions")
-    public ResponseEntity<?> listToolSessions() {
-        List<ToolChatSession> list = agentWithToolsService.listSessions();
-        MappingJacksonValue wrapper = new MappingJacksonValue(list);
-        wrapper.setSerializationView(ToolChatSession.Views.List.class);
-        return ResponseEntity.ok(wrapper);
-    }
-
-    /** 智能助手会话详情（含消息） */
-    @GetMapping("/tool-sessions/{id}")
-    public ResponseEntity<?> getToolSession(@PathVariable Long id) {
-        ToolChatSession s = agentWithToolsService.getSession(id);
-        if (s == null) {
-            return ResponseEntity.notFound().build();
-        }
-        MappingJacksonValue wrapper = new MappingJacksonValue(s);
-        wrapper.setSerializationView(ToolChatSession.Views.Detail.class);
-        return ResponseEntity.ok(wrapper);
-    }
-
-    /** 删除智能助手会话 */
-    @DeleteMapping("/tool-sessions/{id}")
-    public ResponseEntity<?> deleteToolSession(@PathVariable Long id) {
-        try {
-            agentWithToolsService.deleteSession(id);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            log.error("deleteToolSession failed", e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "删除失败"));
-        }
-    }
-
-    /** 面试深挖问题后的上下文探讨，支持记忆 */
-    @PostMapping("/chat-session")
-    public ResponseEntity<?> chatSession(@RequestBody Map<String, String> request) {
-        String sessionId = request != null ? request.get("sessionId") : null;
-        String userMessage = request != null ? request.get("userMessage") : null;
-        String questions = request != null ? request.getOrDefault("questions", "") : "";
-        String resume = request != null ? request.getOrDefault("resume", "") : "";
-        String company = request != null ? request.getOrDefault("company", "") : "";
-        String department = request != null ? request.getOrDefault("department", "") : "";
-        if (sessionId == null || sessionId.isBlank() || userMessage == null || userMessage.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "sessionId 和 userMessage 不能为空"));
-        }
-        try {
-            String result = interviewChatService.chat(sessionId, userMessage, questions, resume, company, department);
-            return ResponseEntity.ok(Map.of("reply", InterviewAgentWithToolsService.finalFormatting(result)));
-        } catch (NotFoundException e) {
-            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            log.error("chatSession failed", e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "对话失败"));
-        }
-    }
-
-    /** 结束当前会话，保存到历史（无消息时也会创建会话记录） */
-    @PostMapping("/chat-session/end")
-    public ResponseEntity<?> endChatSession(@RequestBody Map<String, String> request) {
-        String sessionId = request != null ? request.get("sessionId") : null;
-        String questions = request != null ? request.getOrDefault("questions", "") : "";
-        String resume = request != null ? request.getOrDefault("resume", "") : "";
-        String company = request != null ? request.getOrDefault("company", "") : "";
-        String department = request != null ? request.getOrDefault("department", "") : "";
-        if (sessionId == null || sessionId.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "sessionId 不能为空"));
-        }
-        try {
-            interviewChatService.endSession(sessionId, questions, resume, company, department);
-            return ResponseEntity.ok(Map.of("ok", true));
-        } catch (NotFoundException e) {
-            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            log.error("endChatSession failed", e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "结束失败"));
-        }
-    }
-
-    /** 历史会话列表（不含消息） */
-    @GetMapping("/chat-sessions")
-    public ResponseEntity<MappingJacksonValue> listChatSessions() {
-        List<InterviewChatSession> list = interviewChatService.listSessions();
-        MappingJacksonValue wrapper = new MappingJacksonValue(list);
-        wrapper.setSerializationView(InterviewChatSession.Views.List.class);
-        return ResponseEntity.ok(wrapper);
-    }
-
-    /** 按数据库 id 获取会话（必须在 /chat-sessions/{sessionId} 之前声明，避免路径歧义） */
-    @GetMapping("/chat-sessions/by-id/{id}")
-    public ResponseEntity<?> getChatSessionById(@PathVariable Long id) {
-        InterviewChatSession s = interviewChatService.getSessionById(id);
-        if (s == null) {
-            return ResponseEntity.notFound().build();
-        }
-        MappingJacksonValue wrapper = new MappingJacksonValue(s);
-        wrapper.setSerializationView(InterviewChatSession.Views.Detail.class);
-        return ResponseEntity.ok(wrapper);
-    }
-
-    /** 按数据库 id 删除 */
-    @DeleteMapping("/chat-sessions/by-id/{id}")
-    public ResponseEntity<?> deleteChatSessionById(@PathVariable Long id) {
-        try {
-            interviewChatService.deleteSessionById(id);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            log.error("deleteChatSessionById failed", e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "删除失败"));
-        }
-    }
-
-    /** 删除历史会话（按 sessionId） */
-    @DeleteMapping("/chat-sessions/{sessionId}")
-    public ResponseEntity<?> deleteChatSession(@PathVariable String sessionId) {
-        try {
-            interviewChatService.deleteSession(sessionId);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            log.error("deleteChatSession failed", e);
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage() != null ? e.getMessage() : "删除失败"));
-        }
-    }
-
-    /** 获取单个会话详情（含消息，按 sessionId） */
-    @GetMapping("/chat-sessions/{sessionId}")
-    public ResponseEntity<?> getChatSession(@PathVariable String sessionId) {
-        InterviewChatSession s = interviewChatService.getSession(sessionId);
-        if (s == null) {
-            return ResponseEntity.notFound().build();
-        }
-        MappingJacksonValue wrapper = new MappingJacksonValue(s);
-        wrapper.setSerializationView(InterviewChatSession.Views.Detail.class);
-        return ResponseEntity.ok(wrapper);
     }
 }

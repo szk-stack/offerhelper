@@ -68,6 +68,15 @@ public class MockInterviewSession {
     @JsonView(Views.List.class)
     private String difficulty = "MEDIUM";
 
+    /**
+     * 面试模式：
+     * PRACTICE 练习模式 —— 每题答完立刻给出评价、纠错和参考答案，再问下一题；
+     * SIMULATION 真实模拟 —— 全程只追问或换题，不评价、不给答案，结束后统一给逐题参考答案和综合评价。
+     */
+    @JsonView(Views.List.class)
+    @Column(name = "interview_mode")
+    private String mode = "PRACTICE";
+
     /** 面试配置（各类题目数量等，JSON 字符串） */
     @Column(columnDefinition = "TEXT")
     @JsonView(Views.Detail.class)
@@ -167,6 +176,8 @@ public class MockInterviewSession {
     public void setMandatoryQuestions(String mandatoryQuestions) { this.mandatoryQuestions = mandatoryQuestions; }
     public String getDifficulty() { return difficulty; }
     public void setDifficulty(String difficulty) { this.difficulty = difficulty; }
+    public String getMode() { return mode; }
+    public void setMode(String mode) { this.mode = mode; }
     public String getInterviewConfig() { return interviewConfig; }
     public void setInterviewConfig(String interviewConfig) { this.interviewConfig = interviewConfig; }
     public Status getStatus() { return status; }

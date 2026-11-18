@@ -192,76 +192,6 @@ export const api = {
     }
     return res.json()
   },
-  generateQuestions: async (company, department, resume) => {
-    const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE
-    const directUrl = `${base}/interviews/questions`
-    const proxyUrl = base.startsWith('http') ? `${base}/interviews/questions` : `${base}/interviews/questions`
-    const body = JSON.stringify({ company, department, resume })
-    const doReq = (url) =>
-      doFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }, true)
-    let res
-    try {
-      res = await doReq(directUrl)
-      if (res?.ok) return (await res.text()) || null
-    } catch (_) { }
-    try {
-      res = await doReq(proxyUrl)
-    } catch (_) { }
-    if (!res || !res.ok) {
-      const msg = res ? (res.status + ' ' + res.statusText) : '请确认后端已启动 (mvn spring-boot:run) 且端口 8080 可访问'
-      let err = msg
-      try {
-        const json = await res?.json?.()
-        if (json?.error) err = json.error
-      } catch (_) { }
-      throw new Error(err)
-    }
-    const text = await res.text()
-    return text || null
-  },
-  chatSession: (sessionId, userMessage, questions, resume, company, department) =>
-    request('/interviews/chat-session', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId, userMessage, questions: questions || '', resume: resume || '', company: company || '', department: department || '' }),
-    }),
-  endChatSession: (sessionId, questions, resume, company, department) =>
-    request('/interviews/chat-session/end', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId, questions: questions || '', resume: resume || '', company: company || '', department: department || '' }),
-    }),
-  getChatSessions: () => request('/interviews/chat-sessions'),
-  getChatSession: (sessionId) => request(`/interviews/chat-sessions/${encodeURIComponent(sessionId)}`),
-  getChatSessionById: (id) => request(`/interviews/chat-sessions/by-id/${id}`),
-  deleteChatSession: (sessionId) =>
-    request(`/interviews/chat-sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }),
-  deleteChatSessionById: (id) =>
-    request(`/interviews/chat-sessions/by-id/${id}`, { method: 'DELETE' }),
-  chat: (query, company, department) =>
-    request('/interviews/chat', {
-      method: 'POST',
-      body: JSON.stringify({ query, company, department }),
-    }),
-  /** 带 Function Calling 的对话（无状态，兼容旧接口） */
-  chatWithTools: (message) =>
-    request('/interviews/chat-with-tools', {
-      method: 'POST',
-      body: JSON.stringify({ message }),
-    }),
-  /** 智能助手会话管理 */
-  createToolSession: () =>
-    request('/interviews/tool-sessions', { method: 'POST' }),
-  getToolSessions: () =>
-    request('/interviews/tool-sessions'),
-  getToolSession: (id) =>
-    request(`/interviews/tool-sessions/${id}`),
-  deleteToolSession: (id) =>
-    request(`/interviews/tool-sessions/${id}`, { method: 'DELETE' }),
-  toolChat: (sessionId, message) =>
-    request('/interviews/tool-chat', {
-      method: 'POST',
-      body: JSON.stringify({ sessionId, message }),
-    }),
-
   // 复盘（超时 3 分钟；先试代理，失败再直连后端，减少 Failed to fetch）
   analyzeReplay: async (company, department, content) => {
     const ctrl = new AbortController()
@@ -320,28 +250,6 @@ export const api = {
   getReplayRecords: () => request('/replay/records'),
   deleteReplayRecord: (id) =>
     request(`/replay/records/${id}`, { method: 'DELETE' }),
-
-  // 算法题
-  getAlgorithms: (company, difficulty) => {
-    const params = new URLSearchParams()
-    if (company) params.append('company', company)
-    if (difficulty) params.append('difficulty', difficulty)
-    const qs = params.toString()
-    return request(`/algorithms${qs ? '?' + qs : ''}`)
-  },
-  getAlgorithm: (id) => request(`/algorithms/${id}`),
-  createAlgorithm: (question) =>
-    request('/algorithms', {
-      method: 'POST',
-      body: JSON.stringify(question),
-    }),
-  updateAlgorithm: (id, question) =>
-    request(`/algorithms/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(question),
-    }),
-  deleteAlgorithm: (id) =>
-    request(`/algorithms/${id}`, { method: 'DELETE' }),
 
   // 简历
   uploadResume: async (file) => {
@@ -479,10 +387,10 @@ export const api = {
     }),
 
   // Mock Interview
-  createMockSession: (company, department, resumeText, interviewerStyle, mandatoryQuestions, difficulty, questionCounts) =>
+  createMockSession: (company, department, resumeText, interviewerStyle, mandatoryQuestions, difficulty, questionCounts, mode) =>
     request('/mock-interview/sessions', {
       method: 'POST',
-      body: JSON.stringify({ company, department, resumeText, interviewerStyle, mandatoryQuestions, difficulty, questionCounts }),
+      body: JSON.stringify({ company, department, resumeText, interviewerStyle, mandatoryQuestions, difficulty, questionCounts, mode }),
     }),
   generateMockPlan: (sessionId) =>
     request(`/mock-interview/sessions/${sessionId}/plan`, { method: 'POST' }),

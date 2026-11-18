@@ -63,7 +63,25 @@ export default function InterviewReport({ session, onRegenerate, regenerating })
 
   return (
     <div className="report-container">
-      <h2>面试评估报告</h2>
+      <h2>
+        面试评估报告
+        {session?.mode === 'SIMULATION' && (
+          <span
+            style={{
+              marginLeft: '0.5rem',
+              fontSize: '0.5em',
+              fontWeight: 500,
+              padding: '2px 8px',
+              borderRadius: 999,
+              verticalAlign: 'middle',
+              background: 'rgba(255,138,0,0.14)',
+              color: '#c76a00'
+            }}
+          >
+            真实模拟
+          </span>
+        )}
+      </h2>
 
       <div className="report-summary">
         <div className="report-score-block">
@@ -89,7 +107,7 @@ export default function InterviewReport({ session, onRegenerate, regenerating })
 
       {reportData.questionDetails?.length > 0 && (
         <>
-          <h3>逐题点评</h3>
+          <h3>{session?.mode === 'SIMULATION' ? '逐题点评与参考答案' : '逐题点评'}</h3>
           <div className="question-details">
             {reportData.questionDetails.map((q, i) => (
               <div key={i} className="question-detail">
@@ -105,6 +123,22 @@ export default function InterviewReport({ session, onRegenerate, regenerating })
                 )}
                 {q.feedback && <p className="question-feedback">{q.feedback}</p>}
                 {q.suggestion && <p className="question-suggestion">建议：{q.suggestion}</p>}
+                {q.referenceAnswer && q.referenceAnswer.trim() && (
+                  <div
+                    style={{
+                      marginTop: '0.6rem',
+                      padding: '0.6rem 0.8rem',
+                      borderLeft: '3px solid #4f7cff',
+                      background: 'rgba(79,124,255,0.06)',
+                      borderRadius: '0 6px 6px 0'
+                    }}
+                  >
+                    <strong style={{ fontSize: '0.9em' }}>参考答案</strong>
+                    <p style={{ whiteSpace: 'pre-wrap', marginTop: '0.35rem', marginBottom: 0 }}>
+                      {q.referenceAnswer}
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
           </div>

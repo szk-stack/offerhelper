@@ -38,6 +38,8 @@ public class MockInterviewController {
         String resumeText = (String) request.get("resumeText");
         String interviewerStyle = request.getOrDefault("interviewerStyle", "GENTLE").toString();
         String difficulty = request.getOrDefault("difficulty", "MEDIUM").toString();
+        // mode: PRACTICE（练习，逐题点评） / SIMULATION（真实模拟，结束后统一给答案）
+        String mode = request.getOrDefault("mode", "PRACTICE").toString();
         // mandatoryQuestions: 前端传来的是 JSON 数组，转为字符串存储
         Object mqRaw = request.get("mandatoryQuestions");
         String mandatoryQuestions = null;
@@ -58,10 +60,11 @@ public class MockInterviewController {
         try {
             MockInterviewSession session = mockInterviewService.createSession(
                     company, department, resumeText, interviewerStyle,
-                    mandatoryQuestions, difficulty, interviewConfig);
+                    mandatoryQuestions, difficulty, interviewConfig, mode);
             return ResponseEntity.ok(Map.of(
                     "sessionId", session.getSessionId(),
-                    "status", session.getStatus().name()
+                    "status", session.getStatus().name(),
+                    "mode", session.getMode()
             ));
         } catch (Exception e) {
             log.error("创建模拟面试会话失败", e);

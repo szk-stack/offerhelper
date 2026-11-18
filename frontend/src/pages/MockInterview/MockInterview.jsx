@@ -68,7 +68,8 @@ export default function MockInterview() {
         formData.interviewerStyle,
         formData.mandatoryQuestions,
         formData.difficulty,
-        formData.questionCounts
+        formData.questionCounts,
+        formData.mode
       )
       sid = res.sessionId
     } catch (e) {

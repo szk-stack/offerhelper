@@ -1,8 +1,6 @@
 package com.interview.assistant.config;
 
-import com.interview.assistant.entity.AlgorithmQuestion;
 import com.interview.assistant.entity.InterviewExperience;
-import com.interview.assistant.repository.AlgorithmQuestionRepository;
 import com.interview.assistant.repository.InterviewExperienceRepository;
 import com.interview.assistant.service.RagService;
 import org.slf4j.Logger;
@@ -20,14 +18,11 @@ public class DataLoader implements CommandLineRunner {
         private static final Logger log = LoggerFactory.getLogger(DataLoader.class);
 
         private final InterviewExperienceRepository experienceRepository;
-        private final AlgorithmQuestionRepository algorithmRepository;
         private final RagService ragService;
 
         public DataLoader(InterviewExperienceRepository experienceRepository,
-                        AlgorithmQuestionRepository algorithmRepository,
                         RagService ragService) {
                 this.experienceRepository = experienceRepository;
-                this.algorithmRepository = algorithmRepository;
                 this.ragService = ragService;
         }
 
@@ -82,22 +77,6 @@ public class DataLoader implements CommandLineRunner {
                         log.warn("跳过示例面经向量索引（未配置 Embedding Key 时属正常）: {}", e.getMessage());
                 }
                 log.info("Loaded {} sample interview experiences", experiences.size());
-
-                if (algorithmRepository.count() > 0)
-                        return;
-
-                List<AlgorithmQuestion> algorithms = List.of(
-                                createAlgorithm("两数之和", "给定一个整数数组 nums 和一个整数目标值 target，请你在该数组中找出和为目标值 target 的那两个整数。",
-                                                "easy", "字节跳动", "后端", 1, "two-sum"),
-                                createAlgorithm("LRU 缓存", "请你设计并实现一个满足 LRU (最近最少使用) 缓存约束的数据结构。", "medium", "字节跳动", "后端",
-                                                146, "lru-cache"),
-                                createAlgorithm("反转链表", "给你单链表的头节点 head ，请你反转链表，并返回反转后的链表。", "easy", "腾讯", "后端", 206,
-                                                "reverse-linked-list"),
-                                createAlgorithm("二叉树中序遍历", "给定一个二叉树的根节点 root ，返回它的中序遍历结果。", "easy", "腾讯", "后端", 94,
-                                                "binary-tree-inorder-traversal"));
-
-                algorithmRepository.saveAll(algorithms);
-                log.info("Loaded {} sample algorithm questions", algorithms.size());
         }
 
         private InterviewExperience createExperience(String source, String company, String position, String type,
@@ -115,20 +94,5 @@ public class DataLoader implements CommandLineRunner {
                 e.setLlmQuestions(llm);
                 e.setAlgorithmQuestions(algo);
                 return e;
-        }
-
-        private AlgorithmQuestion createAlgorithm(String title, String desc, String difficulty, String company,
-                        String dept,
-                        Integer leetcodeId, String slug) {
-                var a = new AlgorithmQuestion();
-                a.setTitle(title);
-                a.setDescription(desc);
-                a.setDifficulty(difficulty);
-                a.setCompany(company);
-                a.setDepartment(dept);
-                a.setLeetcodeProblemId(leetcodeId);
-                a.setLeetcodeSlug(slug);
-                a.setSource("力扣");
-                return a;
         }
 }

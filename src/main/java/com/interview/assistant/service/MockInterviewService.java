@@ -94,7 +94,7 @@ public class MockInterviewService {
     public MockInterviewSession createSession(String company, String department,
                                                String resumeText, String interviewerStyle,
                                                String mandatoryQuestions, String difficulty,
-                                               String interviewConfig) {
+                                               String interviewConfig, String mode) {
         MockInterviewSession session = new MockInterviewSession();
         session.setSessionId(UUID.randomUUID().toString());
         session.setTenantId(TenantContext.requireTenantId());
@@ -105,6 +105,7 @@ public class MockInterviewService {
         session.setMandatoryQuestions(mandatoryQuestions);
         session.setDifficulty(difficulty != null ? difficulty : "MEDIUM");
         session.setInterviewConfig(interviewConfig);
+        session.setMode(normalizeMode(mode));
         session.setStatus(MockInterviewSession.Status.CREATED);
 
         // 检索关联面经（检索失败不能让整场面试建不起来，降级为无面经快照）
@@ -203,8 +204,12 @@ public class MockInterviewService {
         contexts.put(sessionId, ctx);
 
         // 面试官开场语
-        String opening = "你好，欢迎参加本次模拟面试。我是你的面试官，接下来我会针对你的简历和相关技术进行提问。\n\n"
-                + firstQuestion;
+        String opening = isSimulationMode(session)
+                ? "你好，欢迎参加本次模拟面试。我是你的面试官，接下来会针对你的简历和相关技术连续提问。\n"
+                  + "说明一下：过程中我不会对回答做点评，也不会给提示，结束后会统一给你逐题参考答案和整体评价。\n\n"
+                  + firstQuestion
+                : "你好，欢迎参加本次模拟面试。我是你的面试官，接下来我会针对你的简历和相关技术进行提问。\n\n"
+                  + firstQuestion;
 
         // 持久化面试官开场
         saveDialogue(session, "interviewer", opening, phaseType, 0, 
@@ -342,25 +347,11 @@ public class MockInterviewService {
             String nextQuestionPreview = peekNextQuestionPreview(planJson, session);
             boolean canFollowUp = isDeepDivePhase(phaseType) && flowEngine.canFollowUp(planJson, session);
 
-            String prompt = String.format(
-                "候选人最新的回复是：\n\"%s\"\n\n" +
-                "当前处于「%s」阶段（%s）。\n" +
-                "请严格按照以下规则决定你的下一个动作，并在你回复的【最前面】加上隐式标签（必带）：\n\n" +
-                "1. 如果候选人没听懂或要求解释，以 [CLARIFICATION] 开头，然后用通俗的语言解释上一个问题。" +
-                "解释控制在 300 字以内，讲完再抛一个更简单的验证性问题，不要把标准答案一次性全部讲完。\n\n" +
-                "2. 如果候选人给出了实质性回答，但缺少细节或量化指标（且该环节支持深挖：%s），以 [FOLLOW_UP] 开头，" +
-                "先对候选人的回答做简要评价（指出哪里答得好、哪里有遗漏或不准确），" +
-                "如果回答有错误或不完整，必须先给出当前问题的正确参考答案（讲清关键知识点），" +
-                "然后再针对其回答中薄弱的一个技术点进行深挖追问。\n\n" +
-                "3. 如果候选人回答完整且准确，或者放弃回答，或者该环节不能深挖，以 [NEXT] 开头，按如下格式回复：\n" +
-                "   a) 先对候选人的回答给出评价（1-2句话，指出优点和不足）。\n" +
-                "   b) 如果候选人的回答不够完整或存在错误，你必须给出该问题的正确、完整的参考答案（关键知识点要讲清楚，不要含糊）。如果候选人回答得很好则跳过此步。\n" +
-                "   c) 然后自然过渡到下一题：\n【%s】\n\n" +
-                "注意：只需输出前缀标签+你要说的话，不要输出其他多余字符。" +
-                "评价要具体客观，有实质内容，不要只说\"回答得不错\"之类的空话。\n" +
-                "给出参考答案时要体现专业深度，帮助候选人真正学到东西。",
-                candidateAnswer, phaseTitle, phaseType, canFollowUp ? "是" : "否", nextQuestionPreview
-            );
+            String prompt = isSimulationMode(session)
+                    ? buildSimulationAnswerPrompt(candidateAnswer, phaseTitle, phaseType,
+                            canFollowUp, nextQuestionPreview)
+                    : buildPracticeAnswerPrompt(candidateAnswer, phaseTitle, phaseType,
+                            canFollowUp, nextQuestionPreview);
 
             // 临时放入短期记忆进行决策（不落库保存这一大段提示词）
             ctx.memory.add(UserMessage.from(prompt));
@@ -373,6 +364,58 @@ public class MockInterviewService {
             answeringSessions.remove(sessionId);
             throw e;
         }
+    }
+
+    /**
+     * 练习模式的决策提示词：评价 + 纠错 + 参考答案 + 下一题。
+     */
+    private String buildPracticeAnswerPrompt(String candidateAnswer, String phaseTitle, String phaseType,
+                                             boolean canFollowUp, String nextQuestionPreview) {
+        return String.format(
+            "候选人最新的回复是：\n\"%s\"\n\n" +
+            "当前处于「%s」阶段（%s）。\n" +
+            "请严格按照以下规则决定你的下一个动作，并在你回复的【最前面】加上隐式标签（必带）：\n\n" +
+            "1. 如果候选人没听懂或要求解释，以 [CLARIFICATION] 开头，然后用通俗的语言解释上一个问题。" +
+            "解释控制在 300 字以内，讲完再抛一个更简单的验证性问题，不要把标准答案一次性全部讲完。\n\n" +
+            "2. 如果候选人给出了实质性回答，但缺少细节或量化指标（且该环节支持深挖：%s），以 [FOLLOW_UP] 开头，" +
+            "先对候选人的回答做简要评价（指出哪里答得好、哪里有遗漏或不准确），" +
+            "如果回答有错误或不完整，必须先给出当前问题的正确参考答案（讲清关键知识点），" +
+            "然后再针对其回答中薄弱的一个技术点进行深挖追问。\n\n" +
+            "3. 如果候选人回答完整且准确，或者放弃回答，或者该环节不能深挖，以 [NEXT] 开头，按如下格式回复：\n" +
+            "   a) 先对候选人的回答给出评价（1-2句话，指出优点和不足）。\n" +
+            "   b) 如果候选人的回答不够完整或存在错误，你必须给出该问题的正确、完整的参考答案（关键知识点要讲清楚，不要含糊）。如果候选人回答得很好则跳过此步。\n" +
+            "   c) 然后自然过渡到下一题：\n【%s】\n\n" +
+            "注意：只需输出前缀标签+你要说的话，不要输出其他多余字符。" +
+            "评价要具体客观，有实质内容，不要只说\"回答得不错\"之类的空话。\n" +
+            "给出参考答案时要体现专业深度，帮助候选人真正学到东西。",
+            candidateAnswer, phaseTitle, phaseType, canFollowUp ? "是" : "否", nextQuestionPreview
+        );
+    }
+
+    /**
+     * 真实模拟模式的决策提示词：只追问或换题，全程不评价、不纠正、不给答案。
+     * 参考答案统一留到面试结束后的报告里给。
+     */
+    private String buildSimulationAnswerPrompt(String candidateAnswer, String phaseTitle, String phaseType,
+                                               boolean canFollowUp, String nextQuestionPreview) {
+        return String.format(
+            "候选人最新的回复是：\n\"%s\"\n\n" +
+            "当前处于「%s」阶段（%s）。这是一场**真实模拟面试**，目标是还原真实面试现场，而不是教学。\n" +
+            "请严格遵守以下禁令（违反任何一条都算失败）：\n" +
+            "A. 绝对不要评价候选人的回答，禁止出现「答得不错」「基本正确」「这里有遗漏」「思路是对的」这类反馈。\n" +
+            "B. 绝对不要给出参考答案、标准答案或知识点讲解。候选人答错、答漏、完全不会时，也不要纠正、不要补全、不要提示。\n" +
+            "C. 不要暗示对错，禁止「你再想想」「这里是不是不太对」「提示一下」这类表达。\n\n" +
+            "在遵守禁令的前提下决定你的下一个动作，并在回复【最前面】加上隐式标签（必带）：\n\n" +
+            "1. 如果候选人没听懂或要求重复，以 [CLARIFICATION] 开头，把问题换一种说法重述一遍，但不要透露任何答案要素。\n\n" +
+            "2. 如果候选人给出了实质性回答，且仍有可深挖的细节（本环节支持追问：%s），以 [FOLLOW_UP] 开头，" +
+            "只挑其中一个薄弱点继续追问，一句话问完。\n\n" +
+            "3. 如果候选人回答已相对充分、或者放弃回答、或者本环节不支持追问，以 [NEXT] 开头，直接过渡到下一题：\n【%s】\n\n" +
+            "其他要求：\n" +
+            "- 一次只问一个问题，不要连着抛出多个问题。\n" +
+            "- 语气贴近真实面试官：简洁、克制，不热情鼓励，也不刻意施压。\n" +
+            "- 只说前缀标签 + 你要说的话，不要输出任何多余内容，也不要解释你为什么这么问。",
+            candidateAnswer, phaseTitle, phaseType, canFollowUp ? "是" : "否", nextQuestionPreview
+        );
     }
 
     /**
@@ -716,6 +759,16 @@ public class MockInterviewService {
                 || "THEORETICAL".equals(phaseType) || "SCENARIO".equals(phaseType);
     }
 
+    /** 只接受 PRACTICE / SIMULATION，其余一律回落练习模式（兼容历史数据与非法入参） */
+    private String normalizeMode(String mode) {
+        return "SIMULATION".equalsIgnoreCase(mode) ? "SIMULATION" : "PRACTICE";
+    }
+
+    /** 真实模拟模式：全程不评价、不给答案，结束后才出参考答案 */
+    private boolean isSimulationMode(MockInterviewSession session) {
+        return "SIMULATION".equals(normalizeMode(session.getMode()));
+    }
+
     private String peekNextQuestionPreview(String planJson, MockInterviewSession session) {
         int phaseIdx = session.getCurrentPhaseIndex();
         int questionIdx = session.getCurrentQuestionIndex();
@@ -727,7 +780,9 @@ public class MockInterviewService {
             String q = flowEngine.getQuestionContent(planJson, phaseIdx + 1, 0);
             return "即将进入新阶段「" + newPhaseTitle + "」。新阶段第一题是：" + q;
         }
-        return "没有下一题了，这已经是最后一题。请在说完评语后告知面试结束。";
+        return isSimulationMode(session)
+                ? "没有下一题了，这已经是最后一题。请直接以 [NEXT] 收尾，不要做任何点评、不要给答案。"
+                : "没有下一题了，这已经是最后一题。请在说完评语后告知面试结束。";
     }
 
     private MockInterviewDialogue saveDialogue(MockInterviewSession session, String role, String content,
@@ -751,6 +806,7 @@ public class MockInterviewService {
         Map<String, Object> result = new HashMap<>();
         result.put("sessionId", session.getSessionId());
         result.put("status", session.getStatus().name());
+        result.put("mode", normalizeMode(session.getMode()));
         result.put("interviewerMessage", interviewerMessage);
         result.put("currentPhase", phaseTitle);
         result.put("currentPhaseType", phaseType);
@@ -867,10 +923,26 @@ public class MockInterviewService {
             default -> "你的风格是温和面试官：语气友善，鼓励候选人展开回答，适时引导。";
         };
 
-        return """
-                你是一位互联网大厂的技术面试官，正在进行一场模拟面试。你不仅是考官，也是候选人的导师，帮助他在面试中成长。
-                """ + style + """
+        String roleIntro = isSimulationMode(session)
+                ? "你是一位互联网大厂的技术面试官，正在进行一场**真实模拟面试**。你只扮演面试官，"
+                  + "不做导师、不做点评，目标是把现场还原到和真实面试无法区分。\n"
+                : "你是一位互联网大厂的技术面试官，正在进行一场模拟面试。"
+                  + "你不仅是考官，也是候选人的导师，帮助他在面试中成长。\n";
 
+        String rules = isSimulationMode(session) ? """
+                规则：
+                1. 每次只问一个问题，等待候选人回答
+                2. 对项目和实习经历要深挖细节：技术选型原因、架构设计、性能优化、踩过的坑
+                3. 对八股类问题简洁追问即可
+                4. 用中文交流，语气自然像真实面试
+                5. 不要在一个回复中问多个问题
+                6. 回复控制在 300 字以内
+                7. 【禁止评价】无论候选人答得如何，都不要评价其回答，不要说「答得不错」「有遗漏」「基本正确」
+                8. 【禁止给答案】不要给出参考答案、知识点讲解或任何形式的正确答案，候选人答错也继续往下走
+                9. 【禁止暗示】不要提示对错、不要提示思路，也不要说「这个问题先放一放，我们聊聊别的」这类暴露判断的话
+
+                候选人简历：
+                """ : """
                 规则：
                 1. 每次只问一个问题，等待候选人回答
                 2. 对项目和实习经历要深挖细节：技术选型原因、架构设计、性能优化、踩过的坑
@@ -883,10 +955,13 @@ public class MockInterviewService {
                 9. 【过渡提问】评价和纠正完成后，再自然过渡到下一个问题
 
                 候选人简历：
-                """ + (session.getResumeSnapshot() != null ?
-                       (session.getResumeSnapshot().length() > 2000 ?
-                        session.getResumeSnapshot().substring(0, 2000) + "..." :
-                        session.getResumeSnapshot()) : "（未提供）");
+                """;
+
+        return roleIntro + style + "\n\n" + rules
+                + (session.getResumeSnapshot() != null ?
+                   (session.getResumeSnapshot().length() > 2000 ?
+                    session.getResumeSnapshot().substring(0, 2000) + "..." :
+                    session.getResumeSnapshot()) : "（未提供）");
     }
 
     private String extractJson(String raw) {
